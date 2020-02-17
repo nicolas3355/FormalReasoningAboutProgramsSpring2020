@@ -34,7 +34,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.micromega.Lia.
 Require Import Frap.Frap.
 Require Import Pset2Sig.
-Set Default Goal Selector "!".
+(* Set Default Goal Selector "!". *)
 
 (* Each of the exercises below is worth some number of points.
    If you just want to enjoy the proof hacking without getting distracted by points,
@@ -87,18 +87,32 @@ Print fact.
 (* Instead of writing "(fact x)" all the time, it's more convenient to just write "x!",
    so we make a Notation for this: *)
 Local Notation "x !" := (fact x) (at level 12, format "x !").
-
 (* Exercise: Define a simple exponentiation function in the same style,
    so that "exp base n" equals "base^n". *)
 
-Definition exp(base: N): N -> N. Admitted.
+(*
+Definition flip {A B C} (f : A -> B -> C) x y := f y x.
+Definition exp: N -> N -> N :=
+    flip (recurse by cases
+    | 0 => (fun x => 1)
+    | cheese + 1 => fun x => x * recurse x 
+    end).
+*)
+Definition exp: N -> N -> N :=
+  fun x =>
+    recurse by cases
+    | 0 => 1
+    | _ + 1 => x * recurse
+    end.
+
+
 
 (* Once you define "exp", you can replace "Admitted." below by "Proof. equality. Qed." *)
-Lemma test_exp_2_3: exp 2 3 = 8. Admitted.
-Lemma test_exp_3_2: exp 3 2 = 9. Admitted.
-Lemma test_exp_4_1: exp 4 1 = 4. Admitted.
-Lemma test_exp_5_0: exp 5 0 = 1. Admitted.
-Lemma test_exp_1_3: exp 1 3 = 1. Admitted.
+Lemma test_exp_2_3: exp 2 3 = 8. Proof. equality. Qed. 
+Lemma test_exp_3_2: exp 3 2 = 9. Proof. equality. Qed. 
+Lemma test_exp_4_1: exp 4 1 = 4. Proof. equality. Qed. 
+Lemma test_exp_5_0: exp 5 0 = 1. Proof. equality. Qed. 
+Lemma test_exp_1_3: exp 1 3 = 1. Proof. equality. Qed. 
 
 (* Here's another recursive function defined in the same style to apply a function f to
    a range of values:
@@ -109,7 +123,7 @@ Definition seq(f: N -> N): N -> N -> list N :=
   | n + 1 => fun start => f start :: recurse (start + 1)
   end.
 
-Compute (seq (fun x => x * x) 4 10).
+Compute (seq (fun x => x * x) 4 0).
 
 (* "ith i l" returns the i-th element of the list l.
    To understand the recursion, note that "ith i" returns a function which takes a list and,
@@ -123,7 +137,7 @@ Definition ith: N -> list N -> N :=
                             | nil => 0
                             end
   | i + 1 => fun (l: list N) => match l with
-                                | h :: t => recurse t
+                                | h :: t => recurse t 
                                 | nil => 0
                                 end
   end.
@@ -178,18 +192,113 @@ Qed.
    and are simpler to solve if you don't use induction, so before doing induction,
    try to think where/if you would need an inductive hypothesis. *)
 
+Compute ith 2 (seq (fun x => x * x) 4 0).
+Compute (fun x => x * x)(0 + 2).
+Compute (fun x => x *x)(1) :: seq (fun x => x*x) 3 (1+1).
+Compute seq (fun x => x *x) 3 1.
+(* (i=1, count =2, start 2).*)
+
+Compute ith (1 + 1) (seq (fun x => x *x) (2 + 1) 2) = (fun x => x *x) (2 + (1 + 1)).
+Compute ith (1 + 1) ((fun x => x *x) 2 :: seq (fun x => x *x) 2 (2 + 1)) = ith 1 (seq (fun x => x *x) 2 (2 + 1)).
 (* Exercise: Prove that the i-th element of seq has the value we'd expect. *)
+(*Lemma ayre: f start :: seq f count (start + 1) = seq f count + 1 start
+Lemma riz:  seq f count (start + 1) = seq f count-1 (start + 1) :: f start count
+  ith i (f start :: seq f count (start + 1)) = ith i (seq f count start)
+  
+  
+  if i have 2 lists that are exaclty the same,
+  then ith of the first = ith of the second
+  if 2 lists are identical with one element at the end added to one.
+  then if i < count of the smaller list -> ith of the first= ith of the second
+  *)
+Lemma j: forall  i a l, i < len l -> ith (i + 1) (a :: l) = ith i (l).
+induct i.
+simplify.
+equality.
+simplify.
+unfold_recurse (ith) (i+1).
+equality.
+Qed.
+
+Lemma a: forall f count i start, i < count -> ith (i + 1) (f start :: seq f count (start + 1)) = ith i (seq f count (start + 1)).
+Proof.
+ induct i.
+  simplify.
+  equality.
+  simplify.
+  apply j.
+  rewrite  seq_len.
+  assumption.
+Qed.
 Lemma seq_spec: forall f count i start, i < count -> ith i (seq f count start) = f (start + i).
 Proof.
-  induct count; simplify.
-Admitted.
+  induct count; simplify. 
+  apply N.nlt_0_r in H.
+  equality.
+  induct i.
+  unfold_recurse (seq f) (count).
+  simplify.
+   f_equal. linear_arithmetic.
 
+
+   assert(H2: (i + 1 < count + 1) <-> i < count).
+   linear_arithmetic.
+   apply H2 in H. 
+   unfold_recurse (seq f) (count).
+   rewrite a.
+
+
+   rewrite   IHcount.
+   f_equal.
+   linear_arithmetic.
+   assumption.
+   assumption.
+Qed.
+
+
+
+Lemma concat: forall a l, len(a :: l) = 1 + len(l).
+Proof.
+  induct l; simplify; equality.
+Qed.
+
+Lemma empty: forall l, len l <= 0 -> l = [].
+Proof.
+  induct l.
+  simplify.
+  equality.
+  rewrite concat.
+  intros.
+  cases l.
+  simplify.
+  linear_arithmetic.
+  linear_arithmetic.
+Qed.
 (* Exercise: Prove that if the index is out of bounds, "ith" returns 0. *)
 Lemma ith_out_of_bounds_0: forall i l, len l <= i -> ith i l = 0.
 Proof.
-Admitted.
+induct i.
+intros.
+apply empty in H.
+simplify.
+rewrite H.
+equality.
+simplify.
+induct l.
+simplify.
+unfold_recurse (ith) (i).
+equality.
+rewrite concat in H.
 
+assert(H2: (1 + len l <= i + 1) -> len l <= i). 
+simplify.
+linear_arithmetic.
+apply H2 in H.
 
+apply IHi in H.
+unfold_recurse (ith) (i).
+assumption.
+Qed.
 (* Binomial coefficients *)
 (* ********************* *)
 
@@ -279,19 +388,60 @@ Qed.
 
 (* Now we're ready to prove a few simple facts: *)
 
+Lemma peal_fact: forall n, (n + 1)! = n! * (n+1).
+Proof.
+  simplify.
+  unfold_recurse (fact) (n).
+  apply N.mul_comm.
+Qed.
+
 Lemma fact_nonzero: forall n, n! <> 0.
 Proof.
-Admitted.
+  induct n; simplify; try(equality).
+  rewrite peal_fact.
+  Search (_ * _ <> 0).
+  apply N.neq_mul_0.
+  split.
+  apply IHn.
+  linear_arithmetic.
+Qed.
 
 Lemma Cn0: forall n, C n 0 = 1.
 Proof.
-Admitted.
+  induct n.
+  compute.
+  equality.
+  Print C.
+  unfold C.
+  Search (?x - 0 = ?x).
+  rewrite N.sub_0_r.
+  assert(0! = 1).
+  compute.
+  equality.
+  rewrite H.
+  rewrite N.mul_1_r.
+  apply N.div_same.
+  apply fact_nonzero.
+Qed.
 
 Lemma Cnn: forall n, C n n = 1.
 Proof.
-Admitted.
-
-
+  induct n.
+  compute.
+  equality.
+  unfold C.
+  simplify.
+  Search (?x - ?x = 0).
+  rewrite N.sub_diag.
+  assert(0! = 1).
+  compute.
+  equality.
+  rewrite H.
+  Search (1 * ?x = ?x).
+  rewrite N.mul_1_l.
+  apply N.div_same.
+  apply fact_nonzero.
+Qed.
 (* It's somewhat surprising that in the definition of C(n, k),
 
       n!
@@ -416,7 +566,70 @@ Here we go: *)
 Lemma bcoeff_correct: forall n k, k <= n -> bcoeff n k = C n k.
 Proof.
   induct k.
-Admitted.
+  simplify.
+  rewrite Cn0.
+  equality.
+
+  simplify.
+  symmetry.
+  unfold C.
+
+  rewrite peal_fact.
+  Search ((?c * _ )/ (?c * _)).
+  (* N.div_mul_cancel_l. *)
+  assert (H2 : (n-k) * (n!) / ((n-k) * ((n - (k + 1))! * (k! * (k + 1)))) = (n! / ((n - (k + 1))! * (k! * (k + 1)))) ).
+  assert (H3: (n - k) <> 0).
+  linear_arithmetic.
+  rewrite  N.div_mul_cancel_l with (c:= (n - k)).
+  equality.
+  Search (_ * _ <> 0).
+  apply N.neq_mul_0.
+  split.
+  apply fact_nonzero with (n:= (n - (k + 1))).
+  apply N.neq_mul_0.
+  split.
+  apply fact_nonzero.
+  linear_arithmetic.
+  assumption.
+  rewrite <- H2.
+
+
+  assert((n - k) * (n - (k + 1))! = (n - k)!).
+  assert( n - (k + 1) = n - k - 1) by linear_arithmetic.
+  rewrite H0.
+  replace (n - k)  with ((n - k - 1 + 1))  by linear_arithmetic.
+  replace (n - k - 1 + 1 - 1) with (n- k - 1) by linear_arithmetic.
+  symmetry.
+  Search (?a * ?b = ?b * ?a).
+  rewrite <- N.mul_comm.
+  apply  peal_fact with (n := (n - k - 1)).
+  rewrite N.mul_comm.
+  replace ((n - k) * ((n - (k + 1))! * (k! * (k + 1)))) with ((n - k) * (n - (k + 1))! * (k! * (k + 1))) by linear_arithmetic. 
+  rewrite H0.
+  replace ((n - k)! * (k! * (k + 1))) with ((n - k)! * k! * (k + 1)) by linear_arithmetic.
+  replace ((n - k)! * k! * (k + 1))with (((n - k)! * k!) * (k + 1)) by linear_arithmetic.
+  rewrite N.mul_comm.
+  
+  assert (H3: ((n - k) * n! / ((n - k)! * k! * (k + 1))) = ((n - k) * n! / ((n - k)! * k!) / (k + 1))).
+  rewrite <-  N.div_div.
+  equality.
+  apply N.neq_mul_0;split;apply fact_nonzero.
+  linear_arithmetic.
+  rewrite H3.
+
+
+
+rewrite N.divide_div_mul_exact with (c:= (n - k)) (a:= n!) (b:=((n - k)! * k!)). 
+replace  ((n! / ((n - k)! * k!))) with (C n k) by equality.
+rewrite N.mul_comm.
+rewrite <- IHk.
+unfold_recurse (bcoeff n) (k).
+equality.
+linear_arithmetic.
+apply N.neq_mul_0;split;apply fact_nonzero. 
+apply C_is_integer.
+    linear_arithmetic.
+Qed.
 
 
 (* All binomial coefficients for a given n *)
