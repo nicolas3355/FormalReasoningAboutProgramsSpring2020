@@ -201,16 +201,13 @@ Compute seq (fun x => x *x) 3 1.
 Compute ith (1 + 1) (seq (fun x => x *x) (2 + 1) 2) = (fun x => x *x) (2 + (1 + 1)).
 Compute ith (1 + 1) ((fun x => x *x) 2 :: seq (fun x => x *x) 2 (2 + 1)) = ith 1 (seq (fun x => x *x) 2 (2 + 1)).
 (* Exercise: Prove that the i-th element of seq has the value we'd expect. *)
-(*Lemma ayre: f start :: seq f count (start + 1) = seq f count + 1 start
-Lemma riz:  seq f count (start + 1) = seq f count-1 (start + 1) :: f start count
-  ith i (f start :: seq f count (start + 1)) = ith i (seq f count start)
-  
-  
-  if i have 2 lists that are exaclty the same,
-  then ith of the first = ith of the second
-  if 2 lists are identical with one element at the end added to one.
-  then if i < count of the smaller list -> ith of the first= ith of the second
-  *)
+
+Lemma first_element: forall l a, ith 0 (a::l) = a.
+Proof.
+  simplify.
+  equality.
+Qed.
+
 Lemma j: forall  i a l, i < len l -> ith (i + 1) (a :: l) = ith i (l).
 induct i.
 simplify.
@@ -628,7 +625,7 @@ equality.
 linear_arithmetic.
 apply N.neq_mul_0;split;apply fact_nonzero. 
 apply C_is_integer.
-    linear_arithmetic.
+linear_arithmetic.
 Qed.
 
 
@@ -648,6 +645,7 @@ Definition all_coeffs_slow1(n: N): list N :=
    | k + 1 => C n (k + 1) :: recurse
    end) n.
 
+Compute C 4 2.
 Compute all_coeffs_slow1 0.
 Compute all_coeffs_slow1 1.
 Compute all_coeffs_slow1 2.
@@ -718,6 +716,30 @@ Definition all_coeffs_fast: N -> list N :=
 (* Time Compute all_coeffs_fast 200. takes 0.35s on my computer *)
 
 
+Lemma helper_len: forall a l, len(a::l) = 1 + len l.
+induct l; simplify; equality.
+Qed.
+
+Lemma length_all_coeffs: forall n, len(all_coeffs_fast(n)) = n + 1.
+
+induct n.
+simplify.
+linear_arithmetic.
+simplify.
+unfold_recurse all_coeffs_fast n.
+unfold nextLine.
+rewrite helper_len.
+rewrite seq_len.
+rewrite IHn.
+linear_arithmetic.
+Qed.
+
+Hint Rewrite Cnn.
+Hint Rewrite length_all_coeffs.
+Hint Rewrite helper_len.
+Hint Rewrite seq_len.
+Ltac hammer:= repeat (simplify; try linear_arithmetic; simplify; try equality; simplify).
+
 (* Exercise: Let's prove that all_coeffs_fast is correct.
    Note that you can assume Pascal's rule to prove this. *)
 Lemma all_coeffs_fast_correct:
@@ -726,10 +748,42 @@ Lemma all_coeffs_fast_correct:
     k <= n ->
     ith k (all_coeffs_fast n) = C n k.
 Proof.
-Admitted.
+induct n.
+simplify.
+cases k.
+equality.
+linear_arithmetic.
+
+
+simplify.
+unfold_recurse all_coeffs_fast n.
+unfold nextLine.
+
+induct k.
+rewrite first_element.
+rewrite Cn0.
+equality.
+
+clear IHk.
+assert(k <= n) by linear_arithmetic.
+
+rewrite j; hammer.
+rewrite seq_spec; hammer.
+replace (1 + k - 1) with k  by linear_arithmetic.
+replace (1 + k) with (k + 1) by linear_arithmetic.
+rewrite IHn; hammer.
+unfold Pascal's_rule in H.
+assert (k < n \/ k = n) by linear_arithmetic.
+cases H2.
+rewrite IHn; hammer.
+rewrite H; hammer.
+replace (k + 1 - 1) with k  by linear_arithmetic.
+equality.
+rewrite ith_out_of_bounds_0; hammer.
+rewrite H2; hammer.
+Qed.
 
 (* ----- THIS IS THE END OF PSET2 ----- All exercises below this line are optional. *)
-
 (* Optional exercise: Let's prove that Pascal's rule holds.
    On paper, this can be proved as follows, but feel free to ignore this if you want
    the full challenge!
