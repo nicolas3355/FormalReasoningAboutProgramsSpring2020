@@ -2,7 +2,6 @@
 
 Require Import Frap.Frap.
 Require Import Pset3Sig.
-Set Default Goal Selector "!".
 
 
 (* Authors:
@@ -65,24 +64,33 @@ Definition either {A} (xo yo : option A) : option A :=
 Theorem either_None_right : forall {A} (xo : option A),
     either xo None = xo.
 Proof.
-Admitted.
+  simplify.
+  cases xo; equality.
+Qed.
 
 (* [either] is associative, just like [++]. *)
 Theorem either_assoc : forall {A} (xo yo zo : option A),
     either (either xo yo) zo = either xo (either yo zo).
 Proof.
-Admitted.
+  simplify.
+  cases xo; cases yo; equality.
+Qed.
 
 (* [head] should compute the head of a list, that is,
  * it should return [Some] with the first element of
  * the list if the list is nonempty, and [None]
  * if the list is empty.
  *)
-Definition head {A} (xs : list A) : option A. Admitted.
+Definition head {A} (xs : list A) : option A :=
+  match xs with
+  | [] => None
+  | x :: _ => Some x
+  end.
 
 Example head_example : head [1; 2; 3] = Some 1.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 (* The following theorem makes a formal connection
  * between [either] and [++].
@@ -90,7 +98,9 @@ Admitted.
 Theorem either_app_head : forall {A} (xs ys : list A),
     head (xs ++ ys) = either (head xs) (head ys).
 Proof.
-Admitted.
+  simplify.
+  cases xs; try equality.
+Qed.
 
 
 (* [leftmost_Node] should compute the leftmost node of
@@ -100,13 +110,33 @@ Admitted.
  * recursion (i.e., pattern matching) on the [tree] argument,
  * without using the [flatten] operation.
  *)
-Fixpoint leftmost_Node {A} (t : tree A) : option A. Admitted.
+Fixpoint leftmost_Node {A} (t : tree A) : option A :=
+  match t with
+  | Leaf => None
+  | Node Leaf d _ => Some d
+  | Node l _ _ => leftmost_Node l
+  end.  
 
 Example leftmost_Node_example :
     leftmost_Node (Node (Node Leaf 2 (Node Leaf 3 Leaf)) 1 Leaf)
     = Some 2.
 Proof.
+  equality.
+Qed.
+
+(* Lemma f : forall A l (d : A) r, length(flatten (Node l d r)) > 0.
+Proof.
+  simplify.
 Admitted.
+*)
+Lemma flatten_Node_Non_empty : forall A l  (d : A) r , exists x xs,
+  (flatten (Node l d r)) = x :: xs.
+Proof.
+ simplify.
+ cases l; simplify; try equality.
+ + eauto. 
+ + cases ((flatten l1 ++ d0 :: flatten l2)); simplify; eauto.
+Qed.
 
 (* Prove that the leftmost node of the tree is the same
  * as the head of the list produced by flattening the tree
@@ -115,7 +145,15 @@ Admitted.
 Theorem leftmost_Node_head : forall {A} (t : tree A),
     leftmost_Node t = head (flatten t).
 Proof.
-Admitted.
+  simplify.
+  induct t; simplify; try equality.
+  cases t1; try equality.
+  rewrite IHt1.
+  destruct flatten_Node_Non_empty with (A := A) (l := t1_1) (d := d0) (r := t1_2).
+  destruct H.
+  rewrite H.
+  equality.
+Qed.
 
 
 (* A binary trie is a finite map keyed by lists of Booleans.
@@ -136,17 +174,46 @@ Definition binary_trie A := tree (option A).
  * for those keys that begin with [true], and the right subtree
  * contains entries for those keys that begin with [false].
  *)
-Fixpoint lookup {A} (k : list bool) (t : binary_trie A) {struct t} : option A. Admitted.
+
+Definition get_root {A} (t : binary_trie A) : option A :=
+ match t with
+ | Leaf => None
+ | Node _ root _ => root
+ end.
+
+Definition get_left {A} (t : binary_trie A) : (binary_trie A) :=
+ match t with
+ | Leaf => Leaf
+ | Node l _ _ => l
+ end.
+
+Definition get_right {A} (t : binary_trie A) : (binary_trie A) :=
+ match t with
+ | Leaf => Leaf
+ | Node _ _ r => r
+ end.
+
+Fixpoint lookup {A} (k : list bool) (t : binary_trie A) {struct t} : option A:=
+  match t with
+  | Leaf => None   
+  | Node l d r =>
+      match k with
+      | [] => get_root t
+      | b :: ks => lookup ks (if b then l else r)
+      end
+  end.
 
 Example lookup_example1 : lookup [] (Node Leaf (None : option nat) Leaf) = None.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 Example lookup_example2 : lookup [false; true]
     (Node (Node Leaf (Some 2) Leaf) None (Node (Node Leaf (Some 1) Leaf) (Some 3) Leaf))
                           = Some 1.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 (* [Leaf] represents an empty binary trie, so a lookup for
  * any key should return [None].
@@ -154,7 +221,8 @@ Admitted.
 Theorem lookup_empty {A} (k : list bool)
   : lookup k (Leaf : binary_trie A) = None.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 
 (* Define an operation to "insert" a key and optional value
@@ -317,11 +385,27 @@ Check @FunctionalExtensionality.functional_extensionality.
 (* Let's make a shorthand for this: *)
 Definition fun_ext := @FunctionalExtensionality.functional_extensionality.
 
+Ltac hammer := repeat (unfold inverse in * || unfold compose in *
+                                           || unfold id in *
+                                           || apply fun_ext
+                                           || simplify
+                                           || linear_arithmetic
+                                           || equality).
+
+Ltac hammer' := repeat (hammer || propositional).
+
 (* Here's an example: The function which subtracts two from its argument
    is the inverse of the function which adds two to its argument. *)
 Example plus2minus2: inverse (fun (x: nat) => x + 2) (fun (x: nat) => x - 2).
 Proof.
-Admitted.
+  hammer.
+Qed.
+
+Lemma fun_ext_rw : forall A B (f : A -> B) (g : A -> B), f = g 
+                   <-> forall (x : A), f x = g x.
+Proof.
+  hammer'.
+Qed.
 
 (* On the other hand, note that the other direction does not hold, because
    if a subtraction on natural numbers underflows, it just returns 0, so
@@ -329,14 +413,20 @@ Admitted.
    so it can't have an inverse. *)
 Example minus2plus2: ~ inverse (fun (x: nat) => x - 2) (fun (x: nat) => x + 2).
 Proof.
-Admitted.
+  hammer.
+  rewrite fun_ext_rw .
+  apply Classical_Pred_Type.ex_not_not_all.
+  exists 0.
+  hammer.
+Qed.
 
 (* The identity function is the inverse of itself.
    Note: we're using "@" in front of "id" to say "we want to provide all implicit
    type arguments explicitly, because otherwise Coq would not be able to infer them." *)
 Lemma inverse_id: forall A, inverse (@id A) (@id A).
 Proof.
-Admitted.
+  hammer.
+Qed.
 
 (* Now we can start proving interesting facts about inverse functions:
    If g is the inverse of f, then [map g] is the inverse of [map f]: *)
@@ -344,13 +434,26 @@ Lemma invert_map : forall A B (f: A -> B) (g: B -> A),
     inverse f g ->
     inverse (map f) (map g).
 Proof.
-Admitted.
+  hammer.
+  rewrite <- map_compose.
+  hammer.
+  rewrite H.
+  apply map_id.
+Qed.
+
+Lemma selfComposeComposes {A} : forall (f g: A -> A) (n : nat), fun x => (selfCompose g n) ((selfCompose f n) x) = selfCompose (g ∘ f) n.
 
 (* And here's how to invert the power function: *)
 Lemma invert_selfCompose{A: Type}: forall (f g: A -> A) (n: nat),
     inverse f g ->
     inverse (selfCompose f n) (selfCompose g n).
 Proof.
+  hammer.
+
+
+  induct n.
+  equality.
+
 Admitted.
 
 
