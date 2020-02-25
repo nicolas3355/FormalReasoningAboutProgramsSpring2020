@@ -473,29 +473,26 @@ Check @FunctionalExtensionality.functional_extensionality.
 (* Let's make a shorthand for this: *)
 Definition fun_ext := @FunctionalExtensionality.functional_extensionality.
 
-Ltac hammer := repeat( 
-                          unfold inverse in * 
-                       || unfold compose in *
-                       || unfold id in *
-                       || apply fun_ext
-                       || simplify
-                       || linear_arithmetic
-                       || equality
+Ltac hammer_fun_ext_inv := repeat( 
+                          unfold inverse in *
+                      ||  apply fun_ext
+                      ||  hammer_unfold
                      ).
 
-Ltac hammer' := repeat (hammer || propositional).
+
+Ltac hammer_prop := repeat (hammer_fun_ext_inv || propositional).
 
 (* Here's an example: The function which subtracts two from its argument
    is the inverse of the function which adds two to its argument. *)
 Example plus2minus2: inverse (fun (x: nat) => x + 2) (fun (x: nat) => x - 2).
 Proof.
-  hammer.
+  hammer_fun_ext_inv.
 Qed.
 
 Lemma fun_ext_rw : forall A B (f : A -> B) (g : A -> B), f = g 
                    <-> forall (x : A), f x = g x.
 Proof.
-  hammer'.
+  hammer_prop.
 Qed.
 
 (* On the other hand, note that the other direction does not hold, because
@@ -504,11 +501,11 @@ Qed.
    so it can't have an inverse. *)
 Example minus2plus2: ~ inverse (fun (x: nat) => x - 2) (fun (x: nat) => x + 2).
 Proof.
-  hammer.
+  hammer_fun_ext_inv.
   rewrite fun_ext_rw .
   apply Classical_Pred_Type.ex_not_not_all.
   exists 0.
-  hammer.
+  hammer_fun_ext_inv.
 Qed.
 
 (* The identity function is the inverse of itself.
@@ -516,7 +513,7 @@ Qed.
    type arguments explicitly, because otherwise Coq would not be able to infer them." *)
 Lemma inverse_id: forall A, inverse (@id A) (@id A).
 Proof.
-  hammer.
+  hammer_fun_ext_inv.
 Qed.
 
 (* Now we can start proving interesting facts about inverse functions:
@@ -525,25 +522,57 @@ Lemma invert_map : forall A B (f: A -> B) (g: B -> A),
     inverse f g ->
     inverse (map f) (map g).
 Proof.
-  hammer.
-  rewrite <- map_compose.
-  hammer.
+  simplify.
+  unfold inverse in *.
+  apply fun_ext.
+  simplify.
+  unfold compose.
+  rewrite  <- map_compose .
   rewrite H.
   apply map_id.
 Qed.
 
+
+
+Lemma commutaive_selcompose{A: Type}: forall (g: A->A) n, g ∘ selfCompose g n = selfCompose g n ∘ g.
+Proof.
+  simplify.
+  induct n.
+  equality.
+  simplify.
+  rewrite IHn.
+  rewrite  compose_assoc.
+  f_equal.
+  apply IHn.
+Qed.
+
+Hint Rewrite invert_map.
+Hint Rewrite inverse_id.
 (* And here's how to invert the power function: *)
 Lemma invert_selfCompose{A: Type}: forall (f g: A -> A) (n: nat),
     inverse f g ->
     inverse (selfCompose f n) (selfCompose g n).
 Proof.
-  hammer.
 
-
+  simplify.
   induct n.
-  equality.
 
-Admitted.
+  simplify.
+  apply inverse_id.
+  assert (H2 := H).
+  apply IHn in H.
+
+  simplify.
+  unfold inverse in *.
+  rewrite <- H.
+
+  rewrite commutaive_selcompose.
+  rewrite compose_assoc.
+  f_equal.
+  rewrite <- compose_assoc.
+  rewrite H2.
+  apply compose_id_r.
+Qed.
 
 
 (** ****** Optional exercises ******  *)
