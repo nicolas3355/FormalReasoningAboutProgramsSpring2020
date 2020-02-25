@@ -224,6 +224,11 @@ Proof.
   equality.
 Qed.
 
+Check lookup [] (Node Leaf (Some(2)) Leaf).
+Check lookup [] (Node (Node Leaf (Some 1) Leaf) (Some(2)) Leaf).
+Check lookup [] (Node (Node Leaf (Some 2) Leaf) None ( (Node Leaf (Some 1) Leaf))).
+Check lookup [] (Node (Node Leaf (Some 2) Leaf) (Some 2) (Node Leaf (None : option nat) Leaf)).
+Check binary_trie.
 
 (* Define an operation to "insert" a key and optional value
  * into a binary trie. The [insert] definition should satisfy two
@@ -240,23 +245,71 @@ Qed.
  * Hint: it may be helpful to define an auxiliary function that inserts
  * a key and optional value into the empty trie.
  *)
-Fixpoint insert {A} (k : list bool) (v : option A) (t : binary_trie A) {struct t}
-  : binary_trie A. Admitted.
 
+Fixpoint insert_helper {A} (k : list bool) (v : option A): binary_trie A := 
+  match k with 
+    | [] => Node Leaf v Leaf 
+    | b :: ks => if b then (Node (insert_helper ks v) (None: option A) Leaf) else (Node Leaf (None: option A) (insert_helper ks v))  
+  end.
+Compute insert_helper [true; true; true; true; true] (Some 3) .
+Compute lookup[true; true; true; true] (insert_helper [true; true; true; true] (Some 3)).
+
+
+Fixpoint insert {A} (k : list bool) (v : option A) (t : binary_trie A) {struct t}
+  : binary_trie A := 
+  match t with                                                                                       
+    | Leaf => insert_helper k v
+    | Node l d r => match k with
+                  | [] => Node l v r
+                  | b :: ks => 
+                      if b 
+                      then (Node (insert ks v l) d r)
+                      else (Node l d (insert ks v r))
+                  end
+    end.
+
+                  
 Example insert_example1 : lookup [] (insert [] None (Node Leaf (Some 0) Leaf)) = None.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 Example insert_example2 : lookup [] (insert [true] (Some 2) (Node Leaf (Some 0) Leaf)) = Some 0.
 Proof.
-Admitted.
+  equality.
+Qed.
+
+Lemma insert_helper_is_correct {A}: forall k (v : option A), lookup k (insert_helper k v) = v.
+Proof.
+  induct k.
+  equality.
+  simplify.
+  cases a; simplify; apply IHk.
+Qed.
 
 Theorem lookup_insert {A} (k : list bool) (v : option A) (t : binary_trie A) :
   lookup k (insert k v t) = v.
 Proof.
-Admitted.
+  induct k.
+  induct t.
+  apply insert_helper_is_correct.
+  simplify.
+  equality.
+  cases a.
+  cases t.
+  simplify.
+  apply insert_helper_is_correct.
+  simplify.
+  apply IHk.
+  simplify.
+  cases t.
+  simplify.
+  apply insert_helper_is_correct.
+  simplify.
+  apply IHk.
+Qed.
 
-
+  
 (** ****** Higher-order functions ****** *)
 
 (* Recall the identity function [id] we used in class, which just returns its
@@ -280,7 +333,11 @@ Notation " g ∘ f " := (compose g f) (at level 40, left associativity).
 Lemma compose_id_l : forall A B (f: A -> B),
     id ∘ f = f.
 Proof.
-Admitted.
+simplify.
+unfold compose.
+unfold id.
+equality.
+Qed.
 
 Lemma compose_id_r : forall A B (f: A -> B),
     f ∘ id = f.
