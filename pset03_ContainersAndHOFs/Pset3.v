@@ -68,6 +68,14 @@ Proof.
   cases xo; equality.
 Qed.
 
+Theorem either_None_left : forall {A} (xo : option A),
+    either None xo = xo.
+Proof.
+  simplify.
+  cases xo; equality.
+Qed.
+
+
 (* [either] is associative, just like [++]. *)
 Theorem either_assoc : forall {A} (xo yo zo : option A),
     either (either xo yo) zo = either xo (either yo zo).
@@ -577,7 +585,6 @@ Qed.
 
 (** ****** Optional exercises ******  *)
 
-(* Everything below this line is optional! *)
 
 (* You've reached the end of the problem set. Congrats!
  *
@@ -592,13 +599,43 @@ Qed.
  * can just leave everything below unmodified.
  *)
 
-Fixpoint left_biased_merge {A} (t t' : binary_trie A) : binary_trie A. Admitted.
+Fixpoint left_biased_merge {A} (t t' : binary_trie A) : binary_trie A :=
+  match t with
+  | Leaf => t'
+  | Node l n r => match t' with
+                  | Leaf => Node l n r
+                  | Node l' n' r' => Node (left_biased_merge l l') (either n n') (left_biased_merge r r')
+                  end
+  end.
+Theorem lookup_left_biased_merge_helper {A} (t t' : binary_trie A)(k: list bool) :
+  lookup k (left_biased_merge t t') = either (lookup k t) (lookup k t').
+Proof.
+  induct t.
+  induct t'.
+  equality.
+  equality.
+
+
+  cases t'.
+  simplify.
+  rewrite  either_None_right.
+  equality.
+
+  cases k.
+  simplify.
+  equality.
+  simplify.
+  cases b.
+  apply IHt1.
+  apply IHt2.
+Qed.
+
 
 Theorem lookup_left_biased_merge {A} (k : list bool) (t t' : binary_trie A) :
   lookup k (left_biased_merge t t') = either (lookup k t) (lookup k t').
 Proof.
-Admitted.
-
+  apply lookup_left_biased_merge_helper. 
+Qed.
 
 (* And here are a few more optional exercises about [fold]: *)
 
@@ -636,7 +673,13 @@ Qed.
 Lemma map_is_fold : forall {A B : Type} (f : A -> B) (xs : list A),
     map f xs = fold (fun x ys => cons (f x) ys) nil xs.
 Proof.
-Admitted.
+  simplify.
+  induct xs.
+  equality.
+  simplify.
+  f_equal.
+  apply IHxs.
+Qed.
 
 (* Since [fold f z] replaces [cons] with [f] and [nil] with
  * [z], [fold cons nil] should be the identity function.
@@ -644,36 +687,60 @@ Admitted.
 Theorem fold_id : forall {A : Type} (xs : list A),
     fold cons nil xs = xs.
 Proof.
-Admitted.
+simplify.
+induct xs.
+equality.
+simplify.
+f_equal; apply IHxs.
+Qed.
 
 (* If we apply [fold] to the concatenation of two lists,
  * it is the same as folding the "right" list, and using
  * that as the starting point for folding the "left" list.
  *)
+Lemma concat_with_empty: forall {A} (l :list A), l ++ [] = l. 
+Proof.
+induct l; simplify; try equality.
+Qed.
 Theorem fold_append : forall {A : Type} (f : A -> A -> A) (z : A)
                              (xs ys : list A),
     fold f z (xs ++ ys) = fold f (fold f z ys) xs.
 Proof.
-Admitted.
+  simplify.
+  induct xs; induct ys; simplify; try(equality).
+  rewrite concat_with_empty.
+  equality.
+  simplify.
+  specialize IHxs with (ys:= a0::ys).
+  f_equal.
+  rewrite IHxs.
+  simplify.
+  equality.
+Qed.
 
 (* Using [fold], define a function that computes the
  * sum of a list of natural numbers.
  *)
-Definition sum : list nat -> nat. Admitted.
+Definition sum : list nat -> nat :=
+  fold plus 0.
 
 Example sum_example : sum [1; 2; 3] = 6.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 (* Using [fold], define a function that computes the
  * conjunction of a list of Booleans (where the 0-ary
  * conjunction is defined as [true]).
  *)
-Definition all : list bool -> bool. Admitted.
+Definition all : list bool -> bool := 
+fold andb true.
+
 
 Example all_example : all [true; false; true] = false.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 
 (* The following two theorems, [sum_append] and [all_append],
@@ -684,13 +751,31 @@ Admitted.
 Theorem sum_append : forall (xs ys : list nat),
     sum (xs ++ ys) = sum xs + sum ys.
 Proof.
-Admitted.
+  simplify.
+  unfold sum.
+  induct xs.
+  simplify.
+  equality.
+  simplify.
+  rewrite IHxs.
+  linear_arithmetic.
+Qed.
 
+
+Lemma l : forall a xs, all (a :: xs) = andb a (all xs).  
+Proof.
+  simplify; cases a; unfold all; equality.
+Qed.
 
 Theorem all_append : forall (xs ys : list bool),
     all (xs ++ ys) = andb (all xs) (all ys).
 Proof.
-Admitted.
+  induct xs; simplify; try(equality).
+  simplify. rewrite l.
+  rewrite l. rewrite IHxs.
+  rewrite andb_assoc.
+  equality.
+Qed.
 
 (* Using [fold], define a function that composes a list of functions,
  * applying the *last* function in the list *first*.
