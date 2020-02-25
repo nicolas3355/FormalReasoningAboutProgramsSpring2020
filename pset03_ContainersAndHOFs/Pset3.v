@@ -329,25 +329,35 @@ Definition compose {A B C : Type} (g : B -> C) (f : A -> B) (x : A) : C := g (f 
    in your definitions, or whether you prefer to write "compose". *)
 Notation " g ∘ f " := (compose g f) (at level 40, left associativity).
 
+Ltac hammer_unfold := repeat( 
+                          unfold compose in *
+                       || unfold id in *
+                       || unfold map in *
+                       || simplify
+                       || equality
+                       || linear_arithmetic
+                     ).
+
+
+
 (* Here are three simple properties of function composition. *)
 Lemma compose_id_l : forall A B (f: A -> B),
     id ∘ f = f.
 Proof.
-simplify.
-unfold compose.
-unfold id.
-equality.
+  hammer_unfold.
 Qed.
 
 Lemma compose_id_r : forall A B (f: A -> B),
     f ∘ id = f.
 Proof.
-Admitted.
+  hammer_unfold.
+Qed.
 
 Lemma compose_assoc : forall A B C D (f: A -> B) (g: B -> C) (h: C -> D),
     h ∘ (g ∘ f) = h ∘ g ∘ f.
 Proof.
-Admitted.
+  hammer_unfold.
+Qed.
 
 (* The selfCompose function takes a function and applies this function n times
    to the argument. There are different ways of defining it, but let's
@@ -367,18 +377,20 @@ Example selfCompose_plus1: selfCompose (plus 2) 7 3 = 17. Proof. equality. Qed.
    saying "to raise [base] to the power [e], apply the function which multiplies
    its argument by [base] to [1] [e] times".
    Define [exp] using [selfCompose] and [Nat.mul]. *)
-Definition exp(base e: nat): nat. Admitted.
+Definition exp(base e: nat): nat := 
+selfCompose(Nat.mul base) e 1.
 
 (* Once you define [exp], you can replace [Admitted.] below by [Proof. equality. Qed.] *)
-Lemma test_exp_2_3: exp 2 3 = 8. Admitted.
-Lemma test_exp_3_2: exp 3 2 = 9. Admitted.
-Lemma test_exp_4_1: exp 4 1 = 4. Admitted.
-Lemma test_exp_5_0: exp 5 0 = 1. Admitted.
-Lemma test_exp_1_3: exp 1 3 = 1. Admitted.
+Lemma test_exp_2_3: exp 2 3 = 8. Proof. equality. Qed. 
+Lemma test_exp_3_2: exp 3 2 = 9. Proof. equality. Qed. 
+Lemma test_exp_4_1: exp 4 1 = 4. Proof. equality. Qed. 
+Lemma test_exp_5_0: exp 5 0 = 1. Proof. equality. Qed. 
+Lemma test_exp_1_3: exp 1 3 = 1. Proof. equality. Qed. 
 
 (* And here's another example to illustrate [selfCompose], make sure you understand
    why its result is 256. *)
 Example selfCompose_square: selfCompose (fun (x: nat) => x * x) 3 2 = 256. Proof. equality. Qed.
+Compute selfCompose (fun (x: nat) => x * x) 2 2.  
 
 (* If we map the [id] function over any list, we get the
  * same list back.
@@ -386,7 +398,9 @@ Example selfCompose_square: selfCompose (fun (x: nat) => x * x) 3 2 = 256. Proof
 Theorem map_id : forall {A : Type} (xs : list A),
     map id xs = xs.
 Proof.
-Admitted.
+  hammer_unfold.
+  induct xs; try(equality || rewrite IHxs; equality).
+Qed.
 
 (* If we map the composition of two functions over the list,
  * it's the same as mapping the first function over the whole list
@@ -395,7 +409,12 @@ Admitted.
 Theorem map_compose : forall {A B C : Type} (g : B -> C) (f : A -> B) (xs : list A),
     map (g ∘ f) xs = map g (map f xs).
 Proof.
-Admitted.
+simplify.
+induct xs; try(equality || rewrite IHxs; equality || hammer_unfold).
+simplify.
+f_equal.
+apply IHxs.
+Qed.
 
 (* Just like we defined [map] for lists, we can similarly define
  * a higher-order function [tree_map] which applies a function on
@@ -403,13 +422,19 @@ Admitted.
  * structure intact.
  *)
 Fixpoint tree_map {A B : Type} (f : A -> B) (t : tree A)
-  : tree B. Admitted.
+  : tree B :=
+  match t with
+  | Leaf => Leaf
+  | Node l n r => Node (tree_map f l) (f n) (tree_map f r) 
+  end.
 
 Example tree_map_example :
   tree_map (fun x => x + 1) (Node (Node Leaf 1 Leaf) 2 (Node Leaf 3 (Node Leaf 4 Leaf)))
   = (Node (Node Leaf 2 Leaf) 3 (Node Leaf 4 (Node Leaf 5 Leaf))).
 Proof.
-Admitted.
+  equality.
+Qed.
+
 
 (* [tree_map_flatten] shows that [map]
  * and [tree_map] are related by the [flatten] function.
@@ -417,8 +442,14 @@ Admitted.
 Theorem tree_map_flatten : forall {A B : Type} (f : A -> B) (t : tree A),
     flatten (tree_map f t) = map f (flatten t).
 Proof.
-Admitted.
-
+simplify.
+induct t; simplify; try (equality).
+rewrite IHt1.
+rewrite IHt2.
+rewrite <- map_cons.
+rewrite map_app.
+equality.
+Qed.
 
 (* *** Inverse functions *** *)
 
@@ -442,12 +473,15 @@ Check @FunctionalExtensionality.functional_extensionality.
 (* Let's make a shorthand for this: *)
 Definition fun_ext := @FunctionalExtensionality.functional_extensionality.
 
-Ltac hammer := repeat (unfold inverse in * || unfold compose in *
-                                           || unfold id in *
-                                           || apply fun_ext
-                                           || simplify
-                                           || linear_arithmetic
-                                           || equality).
+Ltac hammer := repeat( 
+                          unfold inverse in * 
+                       || unfold compose in *
+                       || unfold id in *
+                       || apply fun_ext
+                       || simplify
+                       || linear_arithmetic
+                       || equality
+                     ).
 
 Ltac hammer' := repeat (hammer || propositional).
 
@@ -497,8 +531,6 @@ Proof.
   rewrite H.
   apply map_id.
 Qed.
-
-Lemma selfComposeComposes {A} : forall (f g: A -> A) (n : nat), fun x => (selfCompose g n) ((selfCompose f n) x) = selfCompose (g ∘ f) n.
 
 (* And here's how to invert the power function: *)
 Lemma invert_selfCompose{A: Type}: forall (f g: A -> A) (n: nat),
