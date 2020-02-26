@@ -132,13 +132,9 @@ Proof.
   equality.
 Qed.
 
-Lemma flatten_Node_Non_empty : forall A l  (d : A) r , exists x xs,
-  (flatten (Node l d r)) = x :: xs.
+Lemma jazz: forall {A} (l1: list A) (l2: list A) d, l1 ++ d :: l2 <> [].
 Proof.
- simplify.
- cases l; simplify; try equality.
- + eauto. 
- + cases ((flatten l1 ++ d0 :: flatten l2)); simplify; eauto.
+  simplify; cases l1; cases l2; simplify; try(equality).
 Qed.
 
 (* Prove that the leftmost node of the tree is the same
@@ -149,15 +145,29 @@ Theorem leftmost_Node_head : forall {A} (t : tree A),
     leftmost_Node t = head (flatten t).
 Proof.
   simplify.
-  induct t; simplify; try equality.
-  cases t1; try equality.
+  induct t.
+  simplify.
+  try equality.
+  cases (Node t1 d t2).
+  equality.
+  rewrite <- Heq.
+  simplify.
+  cases t1.
+  simplify.
+  equality.
+
+  simplify.
   rewrite IHt1.
-  destruct flatten_Node_Non_empty with (A := A) (l := t1_1) (d := d0) (r := t1_2).
-  destruct H.
-  rewrite H.
+  simplify.
+  unfold head.
+  simplify.
+
+  cases (flatten t1_1 ++ d1 :: flatten t1_2).
+  assert(flatten t1_1 ++ d1 :: flatten t1_2 <> []).
+  apply jazz.
+  contradiction.
   equality.
 Qed.
-
 
 (* A binary trie is a finite map keyed by lists of Booleans.
  * We will implement a binary trie with entries of type [A]
