@@ -132,11 +132,6 @@ Proof.
   equality.
 Qed.
 
-(* Lemma f : forall A l (d : A) r, length(flatten (Node l d r)) > 0.
-Proof.
-  simplify.
-Admitted.
-*)
 Lemma flatten_Node_Non_empty : forall A l  (d : A) r , exists x xs,
   (flatten (Node l d r)) = x :: xs.
 Proof.
@@ -187,18 +182,6 @@ Definition get_root {A} (t : binary_trie A) : option A :=
  match t with
  | Leaf => None
  | Node _ root _ => root
- end.
-
-Definition get_left {A} (t : binary_trie A) : (binary_trie A) :=
- match t with
- | Leaf => Leaf
- | Node l _ _ => l
- end.
-
-Definition get_right {A} (t : binary_trie A) : (binary_trie A) :=
- match t with
- | Leaf => Leaf
- | Node _ _ r => r
  end.
 
 Fixpoint lookup {A} (k : list bool) (t : binary_trie A) {struct t} : option A:=
@@ -780,12 +763,23 @@ Qed.
 (* Using [fold], define a function that composes a list of functions,
  * applying the *last* function in the list *first*.
  *)
-Definition compose_list {A : Type} : list (A -> A) -> A -> A. Admitted.
+
+(* Definition compose_list {A : Type} : list (A -> A) -> A -> A := *)
+Definition compose_list {A : Type} (x: list (A -> A)) (y : A) : A :=
+  fold (fun f g =>  f g) y x.
+(* Fixpoint compose_list {A : Type} (x: list (A -> A)) (y : A) : A :=
+   match x with
+           |[]  => y
+           |[x] => x y
+           | x :: xs => x (compose_list xs y)
+           end.*)
+
 
 Example compose_list_example :
   compose_list [fun x => x + 1; fun x => x * 2; fun x => x + 2] 1 = 7.
 Proof.
-Admitted.
+  equality.
+Qed.
 
 
 (* Show that [sum xs] is the same as converting each number
@@ -799,4 +793,10 @@ Admitted.
 Theorem compose_list_map_add_sum : forall (xs : list nat),
     compose_list (map plus xs) 0 = sum xs.
 Proof.
-Admitted.
+  induct xs; try(equality).
+  unfold sum in *.
+  unfold compose_list in *.
+  simplify.
+  rewrite IHxs.
+  equality.
+Qed.
