@@ -187,19 +187,90 @@ Ltac use_bst_iff_assumption :=
    containing two "match" expressions that returns the original
    tree in cases where the expected structure is not present. *)
 
-Definition rotate (T : tree) : tree. Admitted.
+Definition rotate (T : tree) : tree := 
+  match T with
+  | Leaf
+  | Node _ _ Leaf => T
+  | Node n_t l_a (Node n_r l_b r_x) => Node n_r (Node n_t l_a l_b) r_x
+  end.
+
 Lemma bst_rotate T s (H : bst T s) : bst (rotate T) s.
-Proof. Admitted.
+Proof.
+  cases T.
+  equality.
+  cases T2.
+  equality.
+  simplify.
+  propositional; use_bst_iff_assumption; propositional; try equality; linear_arithmetic.
+
+ (* + apply bst_iff with (Q:= (fun x : t => (s x /\ x < d0) /\ x < d)) in H.
+    assumption.
+    propositional.
+    linear_arithmetic.
+  
+  + apply bst_iff with (Q:= (fun x : t => (s x /\ x < d0) /\ d < x)) in H1.
+    equality.
+    propositional.
+  +
+
+ *) 
+Qed.
 (* there is a hint on the class website that completely gives away the proofs
  * of these rotations. We recommend you study that code after completing this
  * exercise to see how we did it, and maybe pick up a trick or two to use below. *)
 
 Lemma member_bst : forall tr s a, bst tr s -> member a tr = true <-> s a.
-Proof. Admitted.
+Proof.
+  induct tr; simplify.
+  + specialize (H a).
+    propositional.
+    equality.
+  + cases (compare a d); propositional.
+    - apply IHtr1 with (a := a) in H.
+      propositional.
+    - apply IHtr1 with (a := a) in H.
+      propositional.
+    - equality.
+    - apply IHtr2 with (a := a) in H2.
+      propositional.
+    - apply IHtr2 with (a := a) in H2.
+      propositional.
+Qed.
 
 Lemma bst_insert : forall tr s a, bst tr s ->
   bst (insert a tr) (fun x => s x \/ x = a).
-Proof. Admitted.
+Proof.
+  induct tr; propositional.
+  unfold insert.
+  unfold Singleton.
+  simplify.
+  propositional; repeat (apply H in H0 || equality || linear_arithmetic).
+
+  simplify.
+  cases (compare a d); simplify.
+  propositional.
+  apply IHtr1 with (a := a) in H;
+  
+  (* repeat (use_bst_iff_assumption || propositional || linear_arithmetic);*)
+
+  use_bst_iff_assumption.
+  propositional.
+  linear_arithmetic.
+  use_bst_iff_assumption.
+  propositional.
+  linear_arithmetic.
+  propositional.
+  use_bst_iff_assumption.
+  propositional; linear_arithmetic.
+  use_bst_iff_assumption.
+  propositional; linear_arithmetic.
+  propositional.
+  use_bst_iff_assumption.
+  propositional; linear_arithmetic.
+
+
+  apply IHtr2 with (a := a) in H2; (use_bst_iff_assumption; propositional; linear_arithmetic).
+Qed.
 
 (* To prove [bst_delete], you will need to write specifications for its helper
    functions, find suitable statements for proving correctness by induction, and use
@@ -213,9 +284,56 @@ Proof. Admitted.
    the lemmas you prove about one function need to specify everything a caller
    would need to know about this function. *)
 
+Lemma bst_merge_bst : forall l r s, bst l s -> bst r s -> bst (merge_ordered l r) s.
+Proof.
+  induct l; simplify.
+  unfold merge_ordered.
+  simplify.
+  assumption.
+  unfold merge_ordered.
+
+  cases (rightmost (Node d l1 l2)).
+  simplify.
+  propositional.
+
+  apply IHl1 in H.
+
+  cases (rightmost l2).
+ 
+ (* assumption *) 
+Admitted.
+
 Lemma bst_delete : forall tr s a, bst tr s ->
   bst (delete a tr) (fun x => s x /\ x <> a).
-Proof. Admitted.
+Proof. 
+  induction tr.
+  + simplify.
+    propositional.
+    apply H in H1.
+    contradiction.
+  + simplify.
+    cases (compare a d).
+    propositional.
+    - apply IHtr1 with (a := a) in H.
+      simplify.
+      repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
+    - propositional.
+      apply bst_merge_bst.
+      (* assert (bst tr1 (fun x : t => s x /\ x < d) -> bst tr1 (fun x : t => s x /\ (x = a -> False))) *)
+      rewrite <- e in H.
+      * use_bst_iff_assumption. simplify.
+        propositional. linear_arithmetic. 
+        apply IHtr1 with (a:= a)in H.
+        admit.
+      * use_bst_iff_assumption. simplify.
+        propositional. linear_arithmetic. 
+        admit.
+
+    - propositional.
+      apply IHtr2 with (a := a) in H2.
+      simplify.
+      repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
+Qed.
 
 (* Great job! Now you have proven all tree-structure-manipulating operations
    necessary to implement a balanced binary search tree. Rebalancing heuristics
@@ -229,7 +347,8 @@ Lemma member_insert a tr s (H : bst tr s) : member a (insert a tr) = true.
 Proof. eapply member_bst. eapply bst_insert. eapply H. right. congruence. Qed.
 Lemma member_delete a tr s (H : bst tr s) : member a (delete a tr) = false.
 Proof.
-  pose proof (bst_delete tr s a H) as X.
+  assert(X:= bst_delete tr s a H).
+  pose proof (bst_delete tr s a H) as X2.
   apply (member_bst _ _ a) in X.
   cases (member a (delete a tr)); propositional.
 Qed.
