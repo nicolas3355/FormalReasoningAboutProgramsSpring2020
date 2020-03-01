@@ -92,6 +92,17 @@ Fixpoint rightmost (tr: tree) : option t :=
     | r => r
     end
   end.
+(* Helper functions for [delete] below. The *main task* in this pset
+   is to understand, specify, and prove these helpers. *)
+Fixpoint leftmost (tr: tree) : option t :=
+  match tr with
+  | Leaf => None
+  | Node v lt _ =>
+    match leftmost lt with
+    | None => Some v
+    | l => l
+    end
+  end.
 Definition is_leaf (tr : tree) : bool :=
   match tr with Leaf => true | _ => false end.
 Fixpoint delete_rightmost (tr: tree) : tree :=
@@ -283,26 +294,122 @@ Qed.
    function, or (when applicable) one lemma per multiple functions. However,
    the lemmas you prove about one function need to specify everything a caller
    would need to know about this function. *)
+Definition map_op_def {A} (o : option t) (f : t -> A) (def : A) :=
+  match o with
+  | None => def
+  | Some v => f v
+  end.
 
-Lemma bst_merge_bst : forall l r s, bst l s -> bst r s -> bst (merge_ordered l r) s.
+
+Lemma delete_right_most_safe : forall t s,
+  bst (delete_rightmost t) (map_op_def (rightmost t) (fun rm x => s x /\ x < rm) s)
+  -> bst t s.
+Proof.
+  induction t.
+  simplify.
+  apply H.
+  intros.
+  cases t2.
+  simplify.
+
+  cases t2.
+  - simplify.
+
+  p`ropositional.
+  a
+  equality.
+
+  
+  cases t2.
+  simplify.
+
+  propositional.
+
+
+  cases (rightmost t); simplify.
+  simplify.
+
+
+
+
+
+
+Lemma bst_delete_root : forall l r s d,
+  bst (Node d l r) s -> bst (merge_ordered l r) (fun x => s x /\ (x <> d)).
+Proof.
+  simplify.
+  unfold merge_ordered in *.
+  induct l. simplify.
+  + propositional.
+    use_bst_iff_assumption.
+    propositional.
+    linear_arithmetic.
+    specialize (H x).
+    propositional.
+    linear_arithmetic.
+  + propositional.
+    simplify.
+    propositional.
+    cases (rightmost l2).
+    - simplify.
+      specialize (IHl2 l1 s d).
+      assert (forall x, ((s x /\ x < d0) /\ x < d) <-> (s x /\ x < d)).
+      propositional. linear_arithmetic.
+      assert (bst l1 (fun x : t => (s x /\ x < d0) /\ x < d) = bst l1 (fun x : t => (s x /\ x < d))).
+      f_equal.
+      f_equal.
+      rewrite and_assoc in H1.
+      Search (_ /\ (_ /\ _ )).
+      rewrite H3 in H1.
+
+
+
+
+    linear_arithmetic.
+    destruct H.
+    propositional; try equality.
+
+    equality.
+  simplify.
+  cases (rightmost l).
+  + simplify.
+    destruct H.
+    destruct H0.
+    
+    induct l.
+    - simplify.
+      specialize (H0 n).
+      propositional; equality.
+    - simplify.
+      destruct H0.
+      destruct H0.
+      destruct H2.
+      propositional.
+      * specialize (IHl2 l1 s d0).
+
+
+
+
+
+  propositional.
+  unfold merge_ordered.
+  cases (rightmost l).
+  simplify.
+  propositional.
+Admitted.
+
+
+(*
+Lemma bst_merge_bst : forall l r s1 s2, 
+  bst l s1
+  -> bst r (mp_op_def (rightmost l) (fun rightmost_l => fun x => s2 x /\ rightmost_l < x) s2)
+  -> bst (merge_ordered l r) (fun s => rightmost l s /\ bst l (fun x => s' x /\ x < rightmost_l) /\ bst r (fun x => s2 x /\ x > rightmost_l).
 Proof.
   induct l; simplify.
   unfold merge_ordered.
   simplify.
-  assumption.
-  unfold merge_ordered.
-
-  cases (rightmost (Node d l1 l2)).
-  simplify.
-  propositional.
-
-  apply IHl1 in H.
-
-  cases (rightmost l2).
- 
- (* assumption *) 
 Admitted.
-
+*)
 Lemma bst_delete : forall tr s a, bst tr s ->
   bst (delete a tr) (fun x => s x /\ x <> a).
 Proof. 
@@ -318,18 +425,15 @@ Proof.
       simplify.
       repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
     - propositional.
-      apply bst_merge_bst.
-      (* assert (bst tr1 (fun x : t => s x /\ x < d) -> bst tr1 (fun x : t => s x /\ (x = a -> False))) *)
-      rewrite <- e in H.
-      * use_bst_iff_assumption. simplify.
-        propositional. linear_arithmetic. 
-        apply IHtr1 with (a:= a)in H.
-        admit.
-      * use_bst_iff_assumption. simplify.
-        propositional. linear_arithmetic. 
-        admit.
-
-    - propositional.
+      apply bst_delete_root.
+      simplify.
+      propositional. equality.
+      rewrite e.
+      equality.
+      rewrite e.
+      equality.
+      
+          - propositional.
       apply IHtr2 with (a := a) in H2.
       simplify.
       repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
