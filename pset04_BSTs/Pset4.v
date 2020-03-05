@@ -144,6 +144,7 @@ Fixpoint delete (a: t) (tr: tree) : tree :=
 (* Here is a lemma that you will almost definitely want to use. *)
 Example bst_iff : forall tr P Q, bst tr P -> (forall x, P x <-> Q x) -> bst tr Q.
 Proof.
+
   induct tr; simplify.
   { rewrite <-H0. apply H with (x:=x). }
   rewrite H0 in H.
@@ -420,16 +421,6 @@ simplify.
 propositional.
 Qed.
 
-
-Lemma ho: forall d l r s n, rightmost l = Some n -> bst (Node d l r) s -> n < d. 
-Proof.
-  simplify.
-  propositional.
-  apply sn with (n:=n) in H0.
-  propositional.
-  assumption.
-Qed.
-
 Lemma is_leaf_true: forall tr, is_leaf tr = true -> tr = Leaf. 
 Proof.
   induct tr; simplify; try equality.
@@ -456,6 +447,18 @@ cases (rightmost l2_2).
 equality.
 equality.
 Qed.
+
+Lemma rightmost_lem': forall d l1 d2 l11 l22, rightmost (Node d l1 (Node d2 l11 l22)) = rightmost (Node d2 l11 l22).
+Proof.
+simplify.
+cases l22.
+equality.
+simplify.
+cases (rightmost l22_2).
+equality.
+equality.
+Qed.
+
 
 Lemma rightmost_isleaf: forall d l1 l2, l2 = Leaf -> rightmost (Node d l1 l2) = Some d.
 Proof.
@@ -494,6 +497,36 @@ Proof.
   equality.
 Qed.
 
+
+Lemma ho: forall d l r s n, rightmost l = Some n -> bst (Node d l r) s -> n < d. 
+Proof.
+  simplify.
+  propositional.
+  apply sn with (n:=n) in H0.
+  propositional.
+  assumption.
+Qed.
+
+
+Lemma ho': forall d l r s n, rightmost(Node d l r) = Some n -> bst (Node d l r) s -> n >= d. 
+Proof.
+  intros.
+  specialize (sn _ _ _ H H0) as snn.
+  cases r.
+  simplify. 
+  propositional.
+  assert (d = n) by equality.
+  linear_arithmetic.
+  assert (H':=H).
+  rewrite rightmost_lem' in H'.
+  apply close_bst in H0.
+  propositional.
+
+  specialize (sn _ _ _ H' H3) as snn'.
+  simpl in snn'.
+  propositional.
+  linear_arithmetic.
+Qed.
 (* Lemma forall tr s a, bst (Node d l1 l2) s -> s a -> a <= d *)
 (* what happens to the s when i delete the rightmost of a tree? *)
 (* if I delete the rightmost member n, then n will not be a member of the resulting s.*)
@@ -534,45 +567,6 @@ Proof.
   equality.
 Qed.
 
-
-
-Lemma bst_delete_root : forall l r s d,
-  bst (Node d l r) s -> bst (merge_ordered l r) (fun x => s x /\ (x <> d)).
-Proof.
-  simplify.
-  propositional.
-
-
-
-  cases l.
-  simplify.
-  unfold merge_ordered.
-  simplify.
-  use_bst_iff_assumption.
-  propositional.
-  linear_arithmetic.
-  specialize (H x).
-  propositional.
-  linear_arithmetic.
-
-
-Admitted.
-(*  unfold merge_ordered.
-  cases (rightmost (Node d0 l1 l2)).
-  unfold delete_rightmost.
-  cases (is_leaf l2).
-  apply is_leaf_true in Heq0.
-  rewrite Heq0 in H.
-  simplify.
-  rewrite Heq0 in Heq.
-  simplify.
-  propositional.
-
-
-
-Admitted.
-*)
-
 Lemma merge_with_leaf: forall tr2, merge_ordered Leaf tr2 = tr2.
 Proof.
   equality.
@@ -592,26 +586,109 @@ Proof.
   equality.
 Qed.
 
-Lemma merge_only_possible: forall tr1, tr1 = merge_ordered tr1 Leaf <-> tr1 = Leaf.
+
+Lemma delete_rightmost_close : forall d l d2 l2 r2,
+    delete_rightmost (Node d l (Node d2 l2 r2)) = (Node d l (delete_rightmost (Node d2 l2 r2))).
 Proof.
-Admitted.
-(*Lemma bst_merge_bst : forall l r s1 s2, 
-  bst l s1
-  -> bst r (mp_op_def (rightmost l) (fun rightmost_l => fun x => s2 x /\ rightmost_l < x) s2)
-  -> bst (merge_ordered l r) (fun s => rightmost l s /\ bst l (fun x => s' x /\ x < rightmost_l) /\ bst r (fun x => s2 x /\ x > rightmost_l).
+  equality.
+Qed.
+
+Lemma ejre : forall tr1 s n, bst tr1 s ->  rightmost tr1 = Some n ->
+bst (delete_rightmost tr1) (fun x : t => (s x /\ x < n)).
+ Proof.
+
+   induct tr1.
+   simplify.
+   equality.
+   intros.
+   cases (tr1_2).
+   simpl.
+   assert (H0' := H0).
+   simpl in H0'.
+   assert (Hb := H).
+   simpl in H.
+   propositional.
+   use_bst_iff_assumption.
+   propositional.
+   assert (d = n) by equality.
+   linear_arithmetic.
+
+   assert (d = n) by equality.
+   linear_arithmetic.
+   rewrite delete_rightmost_close.
+   rewrite <- close_bst.
+   propositional.
+   simplify.
+   propositional.
+   Check ho.
+   Admitted.
+
+  (* all_members_right_bigger_than_root *)
+  (* all_members_left_less_than_root *)
+Lemma member_less: forall s tr1 tr2 d x ,  bst (Node d tr1 tr2) s -> member x tr1 = true  -> x < d.  
 Proof.
-  induct l; simplify.
-  unfold merge_ordered.
+  intros.
+  assert (H':=H).
   simplify.
-Admitted.
-*)
-  Lemma delete_are_equiv: forall tr n s s2, bst tr s -> rightmost (tr) = Some n -> bst (delete_rightmost tr) s2 = bst (delete n tr) s2. 
-  Proof.
-  Admitted.
-   
+  propositional.
+  apply member_bst with (tr:= tr1) (s:= (fun x : t => s x /\ x < d))in H0. 
+  propositional.
+  assumption.
+Qed.
+  (* all_members_right_bigger_than_root *)
+  (* all_members_left_less_than_root *)
+Lemma member_more: forall s tr1 tr2 d x ,  bst (Node d tr1 tr2) s -> member x tr2 = true  -> x > d.  
+Proof.
+  intros.
+  assert (H':=H).
+  simplify.
+  propositional.
+  apply member_bst with (tr:= tr2) (s:= (fun x : t => s x /\ d < x)) in H0. 
+  propositional.
+  assumption.
+Qed.
+
+
+Lemma hi: forall tr n , rightmost tr = Some n -> (forall s, bst tr s -> (forall x, s x -> x <= n)).  
+Proof.
+
+  induct tr.
+  simplify.
+  equality.
+
+  intros.
+
+  assert (H2 := H).
+  assert (H0b := H0).
+
+  specialize (ho' d tr1  tr2  s n H2  H0b) as ho''. 
+  cases tr2.
+  2:{
+  apply close_bst in H0b.
+  propositional.
+  rewrite rightmost_lem' in H.
+  specialize (IHtr2 _ H _ H6).
+
+  assert (x < d \/ x > d \/ x = d) by linear_arithmetic.
+
+  cases(H4).
+  linear_arithmetic.
+  cases (H4).
+  apply IHtr2.
+  propositional.
+  linear_arithmetic.
+  }
+  simplify.
+  propositional.
+  specialize (H7 x).
+  propositional.
+  linear_arithmetic.
+Qed.
+
 Lemma bst_delete : forall tr s a, bst tr s ->
   bst (delete a tr) (fun x => s x /\ x <> a).
 Proof. 
+
   induction tr.
   + simplify.
     propositional.
@@ -619,37 +696,42 @@ Proof.
     contradiction.
   + simplify.
     cases (compare a d).
-    propositional.
-    - apply IHtr1 with (a := a) in H.
+    - propositional.
+      apply IHtr1 with (a := a) in H.
       simplify.
       repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
-    - propositional.
+    - clear IHtr1 IHtr2.
+      propositional.
+      rewrite <- e in *.
+      clear e.
       unfold merge_ordered.
       cases (rightmost tr1).
       *
-        assert(Heq':=Heq).
-        apply tree_not_empty in Heq'.
-        rewrite delete_are_equiv with (n:=n).
         simplify.
-        assert (Heq'':=Heq).
-        apply sn with (s:=(fun x : t => s x /\ x < d)) in Heq''; try (assumption).
-        propositional; try (assumption); try(linear_arithmetic).
-
-        specialize IHtr1 with (a:= n) (s:=(fun x : t => s x /\ x < d)).
-        assert(H':= H).
-        apply IHtr1 in H'.
-
-        use_bst_iff_assumption.
-        rewrite e.
-        simplify.
-        propositional; try linear_arithmetic.
-        admit.
-
-        repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
-        admit.
-        assumption.
-        assumption.
-    *
+        propositional.
+        ++ 
+        apply sn with (s:=(fun x : t => s x /\ x < a)) in Heq; try (assumption); propositional; try assumption.
+        ++ 
+        apply ho with (d:=a) (r:= tr2) (s:=s) in Heq; try(linear_arithmetic); simplify; propositional; try assumption.
+        ++
+           assert (Heq':=Heq).
+           apply ho with (d:=a) (r:= tr2) (s:=s) in Heq'; try (simplify; propositional).
+           assert (bst (delete_rightmost tr1) (fun x : t => ((s x /\ (x < a)) /\ x < n))).
+           +++ apply ejre; assumption.
+           +++ use_bst_iff_assumption. simplify. propositional; try(linear_arithmetic).
+       ++ 
+           assert (Heq':=Heq).
+           apply ho with (d:=a) (r:= tr2) (s:=s) in Heq'; try (simplify; propositional).
+           use_bst_iff_assumption. simplify. propositional; try(linear_arithmetic).
+           (*apply member_bst with (tr:= (Node a tr1 tr2)) in H1.*)
+           simplify.
+           cases (compare x a); try linear_arithmetic.
+           +++
+               apply hi with (x:=x) (s:= (fun x : t => s x /\ x < a)) in Heq.
+               linear_arithmetic.
+               assumption.
+               propositional.
+     *
       repeat (use_bst_iff_assumption || propositional || linear_arithmetic).
       apply tree_empty in Heq.
       rewrite Heq in H.
