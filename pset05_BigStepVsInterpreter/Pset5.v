@@ -781,6 +781,17 @@ Inductive deval: valuation -> cmd -> valuation -> Prop :=
     dinterp e v = 0 ->
     deval v (While e body) v.
 
+Lemma interp_same_dinerp: forall e v, interp e v (dinterp e v).
+Proof.
+  induct e; simplify; try equality.
+  cases ( v $? x); try equality.
+  exists (dinterp e1 v).
+  exists (dinterp e2 v).
+  specialize (IHe1 v).
+  specialize (IHe2 v).
+  propositional.
+Qed.
+
 (* Now let's prove that if a program evaluates to a valuation according to the
    deterministic semantics, it also evaluates to that valuation according to
    the nondeterministic semantics (the other direction does not hold, though). *)
@@ -788,12 +799,50 @@ Theorem deval_to_eval: forall v1 v2 c,
     deval v1 c v2 ->
     eval v1 c v2.
 Proof.
-Admitted.
+  induct 1; simplify.
+  econstructor.
+  + econstructor.
+    apply interp_same_dinerp.
+  + econstructor; eauto; assumption.
+  + econstructor. instantiate (1:= dinterp e v). apply interp_same_dinerp. 
+    assumption. assumption.
+  + constructor. replace 0 with (dinterp e v). apply interp_same_dinerp. assumption. 
+  + econstructor. instantiate (1:=dinterp e v). apply interp_same_dinerp.
+    assumption. eauto. assumption.
+  + constructor. replace 0 with (dinterp e v). apply interp_same_dinerp.
+Qed.
 
 (* In deterministic semantics, Fixpoints work a bit better, because they
    can return just one value, and let's use "option" to indicate whether
    we ran out of fuel: *)
-Fixpoint drun(fuel: nat)(v: valuation)(c: cmd): option valuation. Admitted.
+Fixpoint drun(fuel: nat)(v: valuation)(c: cmd): option valuation := 
+  match fuel with
+  | O => None
+  | S fuel' =>
+    match c with
+    | Skip => Some v
+    | Assign x e => Some (v $+ (x, (dinterp e v)))
+    | Sequence c1 c2 => 
+        match (drun fuel' v c1) with 
+        | None => None
+        | Some v2 => drun fuel' v2  c2
+        end
+    | If e c1 c2 =>
+        match (dinterp e v) with
+        | 0 =>   drun fuel' v c1 
+        | _ =>   drun fuel' v c2
+        end
+    | While e c1 =>
+        match (dinterp e v) with
+        | 0 => Some v 
+        | _ => match (drun fuel' v c1) with
+               | None => None  
+               | Some v2 => drun fuel' v2 (While e c1)
+               end
+        end
+    end
+  end.
+
 
 (* More open-ended exercise:
    Now we have six different definitions of semantics:
