@@ -829,8 +829,8 @@ Fixpoint drun(fuel: nat)(v: valuation)(c: cmd): option valuation :=
         end
     | If e c1 c2 =>
         match (dinterp e v) with
-        | 0 =>   drun fuel' v c1 
-        | _ =>   drun fuel' v c2
+        | 0 =>   drun fuel' v c2 
+        | _ =>   drun fuel' v c1
         end
     | While e c1 =>
         match (dinterp e v) with
@@ -843,6 +843,215 @@ Fixpoint drun(fuel: nat)(v: valuation)(c: cmd): option valuation :=
     end
   end.
 
+Lemma run_once: forall fuel1 v1 c,
+  drun (S fuel1) v1 c =  match c with
+    | Skip => Some v1
+    | Assign x e => Some (v1 $+ (x, dinterp e v1))
+    | Sequence c1 c2 =>
+        match drun fuel1 v1 c1 with
+        | Some v2 => drun fuel1 v2 c2
+        | None => None
+        end
+    | If e c1 c2 =>
+        match dinterp e v1 with
+        | 0 => drun fuel1 v1 c2
+        | S _ => drun fuel1 v1 c1
+        end
+    | While e c1 =>
+        match dinterp e v1 with
+        | 0 => Some v1
+        | S _ =>
+            match drun fuel1 v1 c1 with
+            | Some v2 => drun fuel1 v2 (While e c1)
+            | None => None
+            end
+        end
+    end. 
+Proof.
+  equality.
+Qed.
+
+Lemma drun_monotone_less_fuel_impl: forall fuel1 v1 c v2,
+  drun fuel1 v1 c = Some v2 -> drun (S fuel1) v1 c = Some v2.
+Proof.
+  induct fuel1.
+  simplify.
+  equality.
+
+  intros. 
+  cases c.
+  simpl in H.
+  + simpl; try assumption.
+  + simpl; try assumption.
+  + rewrite run_once. simpl in H. cases (drun fuel1 v1 c1).
+    - apply IHfuel1 in Heq. rewrite Heq. apply IHfuel1 in H. assumption. 
+    - equality.
+  + rewrite run_once. simpl in H. cases (dinterp e v1).
+    - apply IHfuel1 in H. assumption. 
+    - apply IHfuel1 in H. assumption.
+  + rewrite run_once. simpl in H. cases (dinterp e v1).
+    - assumption. 
+    - cases (drun fuel1 v1 c).
+     --  apply IHfuel1 in Heq0. rewrite Heq0. apply IHfuel1 in H. assumption.
+     -- equality.
+Qed.
+
+Lemma drun_monotone: forall fuel1 fuel2 v1 c v2,
+    fuel1 <= fuel2 ->
+    drun fuel1 v1 c = Some v2 ->
+    drun fuel2 v1 c = Some v2.
+Proof.
+  induct 1.
+  trivial.
+  induct m.
+  apply le_lt_or_eq in H.
+  cases H.
+  linear_arithmetic.
+  rewrite H.
+  simplify. equality.
+  
+  intros.
+  apply IHle in H0.
+  apply drun_monotone_less_fuel_impl.
+  assumption.
+Qed.
+
+Definition dwrun(v1: valuation)(c: cmd)(v2: valuation): Prop :=
+  exists fuel, drun fuel v1 c = Some v2.
+
+
+Lemma dWRunSkip: forall v,
+    dwrun v Skip v.
+Proof.
+simplify.
+eexists 1.
+simplify.
+equality.
+Qed.
+
+Lemma dWRunAssign: forall v x e a,
+    dinterp e v = a ->
+    dwrun v (Assign x e) (v $+ (x, a)).
+Proof.
+  exists 1.
+  simplify.
+  rewrite H.
+  equality.
+Qed. 
+
+Lemma dWRunSeq: forall v c1 v1 c2 v2,
+    dwrun v c1 v1 ->
+    dwrun v1 c2 v2 ->
+    dwrun v (Sequence c1 c2) v2.
+Proof.
+  simplify.
+  invert H.
+  invert H0.
+
+  exists (S (x + x0)).
+  rewrite run_once.
+  apply drun_monotone with (fuel1:= x) (fuel2:= (x + x0)) in H1.
+  rewrite H1.
+  apply drun_monotone with (fuel2:= (x + x0)) in H.
+  assumption.
+  linear_arithmetic.
+  linear_arithmetic.
+Qed.
+
+Lemma dWRunIfTrue: forall v e thn els v',
+  dinterp e v <> 0 ->
+  dwrun v thn v' ->
+  dwrun v (If e thn els) v'.
+Proof.
+  simplify.
+  invert H0.
+  exists (S x).
+  cases (dinterp e v).
+  equality.
+  simpl.
+  rewrite Heq.
+  assumption.
+Qed.
+
+
+Lemma dWRunIfFalse: forall v e thn els v',
+    dinterp e v = 0
+    -> dwrun v els v'
+    -> dwrun v (If e thn els) v'.
+Proof.
+  simplify.
+  invert H0.
+  exists (S x).
+  rewrite run_once.
+  cases (dinterp e v).
+  equality.
+  equality.
+Qed.
+
+Lemma dWRunWhileFalse: forall v e body,
+    dinterp e v = 0 
+    -> dwrun v (While e body) v.
+Proof.
+simplify.
+exists 1.
+simpl.
+cases (dinterp e v); equality.
+Qed.
+
+Lemma dWRunWhileTrue: forall v e body v' v'',
+    dinterp e v <> 0
+    -> dwrun v body v'
+    -> dwrun v' (While e body) v''
+    -> dwrun v (While e body) v''.
+Proof.
+  simplify.
+  invert H1.
+  invert H0.
+  exists (S (x + x0)).
+  rewrite run_once.
+  cases (dinterp e v ).
+  equality.
+  apply drun_monotone with (fuel2:= x + x0) in H1. rewrite H1.
+  apply drun_monotone with (fuel2:=x + x0) in H2. assumption.
+  linear_arithmetic.
+  linear_arithmetic.
+Qed.
+
+
+Lemma deval_to_drun: forall v1 c v2, 
+  deval v1 c v2 -> exists f, drun f v1 c = Some v2.
+Proof.
+  induct 1.
+  apply dWRunSkip.
+  apply dWRunAssign. equality.
+  apply dWRunSeq with (v:=v) (c1:=c1)(v1:=v1); assumption.
+  apply dWRunIfTrue with (v:=v); assumption.
+  apply dWRunIfFalse with (v:=v) ;assumption.
+  apply dWRunWhileTrue with (v:=v) (v':=v'); assumption.
+  apply dWRunWhileFalse with (v:=v) (e:=e); assumption.
+Qed.
+
+Lemma drun_to_run: forall f v1 c v2 ,
+  drun f v1 c = Some v2 -> run f v1 c v2.
+Proof.
+  induct f.
+
+  simplify.
+  equality.
+  intros.
+  cases c.
+  + simplify. equality.
+  + simplify. econstructor. eexists. instantiate (1:=dinterp e v1). apply interp_same_dinerp. equality.
+  + rewrite run_once in H. cases (drun f v1 c1).
+   - econstructor. instantiate (1:= v). propositional; first_order. 
+   - equality.
+  + simplify. cases (dinterp e v1). econstructor 2. propositional. rewrite <- Heq. apply interp_same_dinerp. apply IHf. assumption.
+    econstructor 1. exists (S n). propositional. rewrite <- Heq. apply interp_same_dinerp. equality. apply IHf. assumption.  
+  + simplify. cases (dinterp e v1). 
+    - econstructor 1. propositional; try equality. rewrite <- Heq. apply interp_same_dinerp.
+    - cases (drun f v1 c). econstructor 2. eexists. eexists. propositional. instantiate (1:= S n). rewrite <- Heq. apply interp_same_dinerp. equality.
+      apply IHf. eauto. apply IHf. assumption. equality. 
+Qed.
 
 (* More open-ended exercise:
    Now we have six different definitions of semantics:
