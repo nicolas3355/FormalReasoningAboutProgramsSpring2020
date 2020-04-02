@@ -75,6 +75,7 @@ Definition subsumed a (s1 s2 : astate a) :=
                                        -> a.(Represents) n xa2
             end.
 *)
+
 Lemma compatible_subsumed : forall a (s1 s2 : astate a) v,
   compatible s1 v -> subsumed s1 s2  -> compatible s2 v.
 Proof.
@@ -87,7 +88,6 @@ Hint Resolve compatible_subsumed : core.
 Lemma constant_sound : absint_sound constant_absint.
 Proof.
   split.
-
   (* You'll need to prove this one. *)
 
   all: simplify.
@@ -95,9 +95,13 @@ Proof.
   (* As a convenience, here are some examples of how to
    * combine tactics using repeat-match-progress. These are not particularly
    * useful for this goal, just a reference for proof-scripting syntax. *)
-
+  all: try equality.
   all:
     repeat match goal with
+    | na : domain |- _
+        => progress (cases na; try equality)
+    | |- True
+       => equality 
     | x : bool |- _
         => progress (cases x)
     | H : Some _ = Some _ |- _
@@ -108,10 +112,16 @@ Proof.
         => solve [linear_arithmetic]
     | H : forall b, b = true -> _ |- _
         => specialize (H true)
+    | H : forall n : nat, n = ?x1 -> n = ?x2 |- _
+        => specialize (H x1); propositional
+    | H : forall n : nat, True -> n = ?x |- _
+        => specialize (H (S x))    
+    | [ |- context [ ?n1 ==n ?n0 ] ]  
+        => cases (n1 ==n n0); simplify; try equality
     | _ => progress (simplify)
     end.
-
-Admitted.
+ all: try linear_arithmetic.
+Qed.
 
 
 (** * Optimizing programs based on that analysis *)
@@ -194,7 +204,111 @@ Definition compatible_throughout_steps {A} ss v c:= forall c' s v',
 (* This line makes [eauto] treat [compatible_throughout_steps] as inlined: *)
 Hint Unfold compatible_throughout_steps : core.
 
+Lemma one_to_many: forall v c v' c',
+  step (v, c) (v', c') ->
+  step^* (v, c) (v', c').
+Proof.
+  induct 1; eauto.
+Qed.
 
+Lemma transitivity_step: forall v c v0 c0 v' c',
+ step (v, c) (v0, c0) -> (step) ^* (v0, c0) (v', c') -> step^* (v, c) (v', c'). 
+Proof.
+  induct 1; eauto.
+Qed.
+
+Lemma transitivity_steps: forall v c v0 c0 v' c',
+ step^* (v, c) (v0, c0) -> (step) ^* (v0, c0) (v', c') -> step^* (v, c) (v', c'). 
+Proof.
+  induct 1; simplify; eauto.
+  cases y.
+  specialize (IHtrc v1 c1 v0 c0).
+  propositional.
+  eapply transitivity_step in H; eauto.
+Qed.
+
+
+Definition interp_once (e : arith) (v : valuation) : nat :=
+  match e with
+  | Const n => n
+  | Var x =>
+    match v $? x with
+    | None => 0
+    | Some n => n
+    end
+  | Plus e1 e2 => interp e1 v + interp e2 v
+  | Minus e1 e2 => interp e1 v - interp e2 v
+  | Times e1 e2 => interp e1 v * interp e2 v
+  end.
+Lemma interp_once_is_interp : forall e v, interp e v = interp_once e v.
+Proof. induct e; simplify; eauto. Qed.
+
+Ltac interp_once := rewrite interp_once_is_interp; unfold interp_once.
+
+Lemma test: forall e a v, compatible a v -> interp e v = interp (to_arith (constfold_arith e a)) v.
+Proof.
+
+  induct e.
+  try (simplify; eauto; fail).
+  intros.
+  unfold compatible in H.
+  unfold constfold_arith.
+  cases (a $? x).
+  apply H in Heq.
+  invert Heq.
+  propositional.
+  cases d; eauto.
+  simplify.
+  rewrite H1; assumption.
+  simplify.
+  equality.
+
+  all:intros; interp_once; erewrite IHe1; eauto; erewrite IHe2; eauto; symmetry; interp_once; simplify; cases(constfold_arith e1 a); cases (constfold_arith e2 a); simplify; equality.
+Qed.
+
+Lemma constfold_step : forall v c v' c',
+  step (v, c) (v', c')
+  -> forall C ss, (forall a, ss $? C c = Some a -> compatible a v)
+  -> step (v, constfold_cmd c ss C) (v', constfold_cmd c' ss C).
+Proof.
+  induct 1; simplify; eauto.
+  cases (ss $? C (x <- e)); eauto.
+  invert Heq.
+  specialize(H a).
+  propositional.
+  apply test with (e:=e) in H0.
+  rewrite H0.
+  constructor.
+Qed.
+
+Lemma constfold_one_step_all : forall v c v' c',
+  step (v, c) (v', c') ->
+  forall ss,  compatible_throughout_steps ss v c ->
+  step (v, constfold_cmd c ss (fun c1 => c1))
+  (v', constfold_cmd c' ss (fun c1 => c1)).
+Proof.
+  induct 1; try (simplify; eauto; fail).
+  +
+    simplify.
+    cases (ss $? (x <- e)); simplify; eauto.
+    unfold compatible_throughout_steps in H.
+    eapply H in Heq.
+    eapply test in Heq.
+    rewrite Heq.
+    constructor 1.
+    eauto.
+  +
+    simplify.
+    econstructor.
+    eapply constfold_step in H.
+    eauto.
+    simplify.
+    unfold compatible_throughout_steps in H0.
+    apply StepSeq1  with (c2:=c2) in H.
+    eapply H0 in H1; eauto.
+Qed.
+
+Proof.
 (* Prove: any sequence of small steps can be replicated with the optimized command. *)
 Lemma constfold_steps : forall v c v' c',
   step^* (v, c) (v', c') ->
@@ -202,7 +316,74 @@ Lemma constfold_steps : forall v c v' c',
   step^* (v, constfold_cmd c ss (fun c1 => c1))
   (v', constfold_cmd c' ss (fun c1 => c1)).
 Proof.
-Admitted.
+  induct 1.
+  simplify.
+  constructor.
+  
+  cases y.
+  simplify.
+  assert(H':= H).
+  eapply constfold_one_step_all in H. 
+  2: eauto.
+  specialize (IHtrc v0 c0 v' c').
+  propositional.
+  specialize (H3 ss).
+  assert (compatible_throughout_steps ss v0 c0) by eauto; propositional.
+  apply transitivity_step with (v':=v') (c':= constfold_cmd c' ss (fun c1 : cmd => c1)) in H; assumption.
+Qed.
+
+Lemma steps_add : forall v1 v2 c1 c2 c3,
+  step ^* (v1,c1) (v2,c2) -> step ^* (v1,c1;;c3) (v2,c2;;c3).
+Proof.
+  induct 1; simplify; eauto.
+Qed.
+
+Lemma steps_remove_skip : forall v1 v2 c1 c2 ,
+  step ^* (v1,c1) (v2, Skip ;; c2) -> step ^* (v1,c1) (v2,c2).
+Proof.
+  
+  induct 1; simplify; eauto.
+  cases y.
+  specialize (IHtrc v v2 c c2).
+  propositional.
+  eapply transitivity_step in H; eauto.
+Qed.
+
+
+ Lemma steps_are_eval: forall v c1 v', step^* (v, c1) (v', Skip) -> eval v c1 v'.
+ Proof.
+   induct 1; eauto.
+ Qed.
+
+Lemma eval_are_steps: forall v c1 v', eval v c1 v' -> step^* (v, c1) (v', Skip).
+ Proof.
+   induct 1; eauto.
+   apply transitivity_steps with (v0 := v1) (c0 := Skip ;; c2).
+   apply steps_add.
+   assumption.
+
+   econstructor.
+   instantiate (1 := (v1,c2)).
+   econstructor.
+   assumption.
+
+   econstructor.
+   eauto.
+
+   apply steps_add  with (c3:=while e loop body done) in IHeval1.
+   apply steps_remove_skip in IHeval1.
+   eapply transitivity_steps; eauto.
+ Qed.
+
+Lemma eval_constfold_tmp : forall v c v',
+  step^* (v, c) (v', Skip) -> eval v c v' ->
+  forall ss, compatible_throughout_steps ss v c -> step^* (v, constfold_cmd c ss (fun c1 => c1))
+  (v', constfold_cmd Skip ss (fun c1 => c1)) ->
+  eval v (constfold_cmd c ss (fun c1 => c1)) v'.
+Proof.
+  simplify.
+  apply steps_are_eval; eauto.
+Qed.
 
 (* Prove: any full program execution can be replicated with the optimized program. *)
 Lemma eval_constfold : forall v c v',
@@ -210,9 +391,15 @@ Lemma eval_constfold : forall v c v',
   forall ss, compatible_throughout_steps ss v c ->
   eval v (constfold_cmd c ss (fun c1 => c1)) v'.
 Proof.
-Admitted.
+  simplify.
+  eapply eval_constfold_tmp; try assumption.
+  apply eval_are_steps; assumption.
+  apply eval_are_steps in H.
+  apply constfold_steps; assumption.
+Qed.
 
 (* This lemma connects the previous to the [invariantFor] goal that FRAP abstract-interpretation machinery proves. *)
+
 Lemma optimize_program_ok : forall v c v' ss,
   eval v c v'
   -> invariantFor (absint_trsys constant_absint c)
