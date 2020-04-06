@@ -11,7 +11,6 @@ Require Import Pset7Sig.
 
 (* Delete this line if you don't like bullet points and errors like
    "Expected a single focused goal but 2 goals are focused." *)
-Set Default Goal Selector "!".
 Set Implicit Arguments.
 
 
@@ -206,15 +205,24 @@ Inductive hasty : fmap var type -> exp -> type -> Prop :=
     hasty G e t
 .
 
+Hint Constructors hasty : core.
 (* Prove these two basic algebraic properties of subtyping. *)
+
+Lemma single_is_tuple : forall t1 t2,
+  t1 $<: t2 <-> TupleTypeCons t1 TupleTypeNil $<: TupleTypeCons t2 TupleTypeNil.
+Proof.
+  simplify.
+  propositional; eauto.
+  invert H.
+  assumption.
+Qed.
 
 Lemma subtype_refl : forall t1, t1 $<: t1.
 Proof.
-Admitted.
+  induct t1; eauto.
+Qed.
 
-Lemma subtype_trans : forall t1 t2 t3, t1 $<: t2 -> t2 $<: t3 -> t1 $<: t3.
-Proof.
-Admitted.
+Hint Resolve subtype_refl: core.
 
 (* BEGIN handy tactic that we suggest for these proofs *)
 Ltac tac0 :=
@@ -232,11 +240,252 @@ Ltac tac0 :=
   | [ H : Some _ = Some _ |- _ ] => invert H
   end;
   subst.
+Ltac tac := simplify; subst; propositional; repeat (tac0; simplify; eauto); try equality.
 
-Ltac tac := simplify; subst; propositional; repeat (tac0; simplify); try equality.
+Lemma subtype_trans_tmp : forall t2 t1 t3, t1 $<: t2 -> t2 $<: t3 -> t1 $<: t3.
+Proof.
+  induct t2; tac.
+  invert H0; eauto.
+Qed.
+
+Lemma subtype_trans : forall t1 t2 t3, t1 $<: t2 -> t2 $<: t3 -> t1 $<: t3.
+Proof.
+  simplify; eapply subtype_trans_tmp; eauto.
+Qed.
+
+Hint Resolve subtype_trans: core.
 (* END handy tactic *)
 
+Lemma type_abs_value_abs: forall x e a b,
+  hasty x e (Fun a b) -> value e -> exists f g, value (Abs f g).
+Proof.
+  cases 2; simplify; eexists; eexists; econstructor.
+  Unshelve.
+  all: (exact "" || exact (Var "")).
+Qed.
 
+Lemma type_fun_is_not_tuple: forall a b,
+  ~(Fun a b $<: TupleTypeNil).
+Proof.
+  propositional.
+  invert H.
+Qed.
+Hint Resolve type_fun_is_not_tuple: core.
+
+Lemma type_tuple_is_not_fun: forall a b,
+  ~(TupleTypeNil $<: Fun a b).
+Proof.
+  propositional.
+  invert H.
+Qed.
+Hint Resolve type_tuple_is_not_fun: core.
+
+Lemma tuple_nil_type: forall x t,
+  hasty x TupleNil t -> TupleTypeNil $<: t.
+Proof.
+  induct 1; simplify; eauto.
+
+
+  
+
+
+
+Lemma tuple_nil_infer: forall t x a b,
+  hasty x TupleNil t -> ~ (t = Fun a b).
+Proof.
+  simplify.
+  invert H.
+  equality.
+
+  assert (t = TupleTypeNil \/ exists j e, t = TupleTypeCons j e).
+  induct H; eauto.
+  cases IHhasty; eauto.
+  subst.
+  invert H0; eauto.
+  invert IHhasty; eauto.
+  invert H1.
+  right.
+
+
+
+
+  invert H0; eauto.
+
+  right.
+
+  
+  subst.
+  
+
+  invert H0.
+  econstructor.
+  eauto.
+
+  invert 1.
+  equality.
+Qed.
+Hint Resolve type_abs_value_abs : core.
+ 
+  (* Now we're ready for the first of the two key properties to establish that
+   * invariant: well-typed programs are never stuck. *)
+Lemma progress : forall e t,
+  hasty $0 e t
+  -> value e
+  \/ (exists e' : exp, step e e').
+Proof.
+  induct 1; simplify; tac; try equality; eauto.
+  left.
+  econstructor.
+  right.
+  invert H3.
+  eexists; repeat econstructor; eauto.
+  eexists; repeat econstructor; eauto.
+  invert H.
+
+  assert (H5:=type_fun_is_not_tuple).
+  specialize (H5 t1 t2).
+
+
+
+  eauto.
+  invert H3.
+  instantiate (1:= subst e2 x e0).
+  
+  econstructor.
+  
+
+Admitted.
+
+Hint Resolve progress: core.
+
+(* Inclusion between typing contexts is preserved by adding the same new mapping
+ * to both. *)
+Lemma weakening_override : forall (G G' : fmap var type) x t,
+  (forall x' t', G $? x' = Some t' -> G' $? x' = Some t')
+  -> (forall x' t', G $+ (x, t) $? x' = Some t'
+                    -> G' $+ (x, t) $? x' = Some t').
+Proof.
+  tac.
+Qed.
+
+Hint Resolve weakening_override.
+
+(* This lemma lets us transplant a typing derivation into a new context that
+ * includes the old one. *)
+Lemma weakening : forall G e t,
+  hasty G e t
+  -> forall G', (forall x t, G $? x = Some t -> G' $? x = Some t)
+    -> hasty G' e t.
+Proof.
+  induct 1; simplify; eauto; tac; try econstructor; tac.
+Qed.
+
+Hint Resolve weakening.
+
+Lemma hasty_change : forall G e t,
+  hasty G e t
+  -> forall G', G' = G
+    -> hasty G' e t.
+Proof.
+  tac.
+Qed.
+
+Hint Resolve hasty_change : core.
+
+
+(* Replacing a variable with a properly typed term preserves typing. *)
+Lemma substitution : forall G x t' e t e',
+  hasty (G $+ (x, t')) e t
+  -> hasty $0 e' t'
+  -> hasty G (subst e' x e) t.
+Proof.
+  induct 1; simplify; repeat (eauto || tac || simplify).
+Qed.
+
+Hint Resolve substitution.
+
+
+(* We're almost ready for the other main property.  Let's prove it first
+ * for the more basic [step0] relation: steps preserve typing. *)
+Lemma preservation0 : forall e1 e2,
+  step0 e1 e2
+  -> forall t, hasty $0 e1 t
+    -> hasty $0 e2 t.
+Proof.
+  Print step0.
+
+  tac.
+  invert H.
+Admitted.
+
+Hint Resolve preservation0.
+(* We also need this key property, essentially saying that, if [e1] and [e2] are
+ * "type-equivalent," then they remain "type-equivalent" after wrapping the same
+ * context around both. *)
+Lemma generalize_plug : forall e1 C e1',
+  plug C e1 e1'
+  -> forall e2 e2', plug C e2 e2'
+    -> (forall t, hasty $0 e1 t -> hasty $0 e2 t)
+    -> (forall t, hasty $0 e1' t -> hasty $0 e2' t).
+Proof.
+  induct 1; tac.
+
+  Admitted.
+  (*
+  invert H.
+  apply H0.
+  assumption.
+
+  invert H0.
+  invert H2.
+  constructor.
+  eapply IHplug.
+  eassumption.
+  assumption.
+  assumption.
+  assumption.
+
+  invert H1.
+  invert H3.
+  constructor.
+  assumption.
+  eapply IHplug.
+  eassumption.
+  assumption.
+  assumption.
+
+  invert H0.
+  invert H2.
+  econstructor.
+  eapply IHplug.
+  eassumption.
+  assumption.
+  eassumption.
+  assumption.
+
+  invert H1.
+  invert H3.
+  econstructor.
+  eassumption.
+  eapply IHplug.
+  eassumption.
+  assumption.
+  eassumption.
+Qed.*)
+
+  Hint Resolve generalize_plug.
+
+(* OK, now we're almost done.  Full steps really do preserve typing! *)
+Lemma preservation : forall e1 e2,
+  step e1 e2
+  -> forall t, hasty $0 e1 t
+    -> hasty $0 e2 t.
+Proof.
+  invert 1; tac.
+  eauto.
+Qed.
+
+Hint Resolve preservation.
 (* The real prize: prove soundness of this type system.
  * We suggest starting from a copy of the type-safety proof from the book's
  * LambdaCalculusAndTypeSoundness.v.
@@ -255,4 +504,32 @@ Theorem safety :
                                  (fun e' => value e'
                                             \/ exists e'', step e' e'').
 Proof.
-Admitted.
+    simplify.
+    apply invariant_weaken with (invariant1 := fun e' => hasty $0 e' t); eauto.
+    apply invariant_induction; tac; eauto; try equality.
+    tac.
+    eauto.
+
+    simplify.
+    eapply progress.
+    eauto.
+
+    (* Step 1: strengthen the invariant.  In particular, the typing relation is
+     * exactly the right stronger invariant!  Our progress theorem proves the
+     * required invariant inclusion. *)
+    apply invariant_weaken with (invariant1 := fun e' => hasty $0 e' t).
+
+    (* Step 2: apply invariant induction, whose induction step turns out to match
+     * our preservation theorem exactly! *)
+    apply invariant_induction; simplify.
+    equality.
+
+    eapply preservation.
+    eassumption.
+    assumption.
+
+    simplify.
+    eapply progress.
+    eassumption.
+  Qed.
+
