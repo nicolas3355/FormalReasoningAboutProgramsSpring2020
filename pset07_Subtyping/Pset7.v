@@ -48,6 +48,10 @@ Inductive value : exp -> Prop :=
 | VTupleCons : forall e1 e2, value e1 -> value e2 -> value (TupleCons e1 e2)
 .
 
+
+Hint Constructors  value : core.
+
+
 (* The next few definitions are quite routine and should be safe to skim through
  * quickly; but start paying more attention when we get to defining the
  * subtyping relation! *)
@@ -94,7 +98,8 @@ Inductive plug : context -> exp -> exp -> Prop :=
     plug C e e'
     -> plug (Proj1 C n) e (Proj e' n)
 .
-
+Hint Constructors plug : core.
+ 
 (* Small-step, call-by-value evaluation *)
 Inductive step0 : exp -> exp -> Prop :=
 | Beta : forall x e v,
@@ -114,6 +119,7 @@ Inductive step0 : exp -> exp -> Prop :=
     -> step0 (Proj (TupleCons v1 v2) (1 + n)) (Proj v2 n)
 .
 
+Hint Constructors step0 : core.
 Inductive step : exp -> exp -> Prop :=
 | StepRule : forall C e1 e2 e1' e2',
     plug C e1 e1'
@@ -121,6 +127,7 @@ Inductive step : exp -> exp -> Prop :=
     -> step0 e1 e2
     -> step e1' e2'.
 
+Hint Constructors step : core.
 Definition trsys_of (e : exp) :=
   {| Initial := {e}; Step := step |}.
 
@@ -173,6 +180,7 @@ Inductive proj_t : type -> nat -> type -> Prop :=
     proj_t t2 n t ->
     proj_t (TupleTypeCons t1 t2) (1 + n) t
 .
+Hint Constructors proj_t : core.
 
 (* Expression typing relation *)
 Inductive hasty : fmap var type -> exp -> type -> Prop :=
@@ -264,68 +272,97 @@ Proof.
   all: (exact "" || exact (Var "")).
 Qed.
 
-Lemma type_fun_is_not_tuple: forall a b,
-  ~(Fun a b $<: TupleTypeNil).
+Definition isTupleType t :=
+  match t with
+  |  TupleTypeCons a b => True
+  |  TupleTypeNil => True
+  | Fun _ _ => False
+  end.
+Hint Unfold isTupleType.
+Lemma type_fun_is_not_tuple: forall t1 t2,
+  isTupleType t1 -> (t1 $<: t2 \/ t2 $<: t1) -> isTupleType t2.
 Proof.
-  propositional.
-  invert H.
+  unfold isTupleType.
+  simplify.
+  cases t1; cases t2; tac.
 Qed.
+
 Hint Resolve type_fun_is_not_tuple: core.
 
-Lemma type_tuple_is_not_fun: forall a b,
-  ~(TupleTypeNil $<: Fun a b).
-Proof.
-  propositional.
-  invert H.
-Qed.
-Hint Resolve type_tuple_is_not_fun: core.
-
-Lemma tuple_nil_type: forall x t,
-  hasty x TupleNil t -> TupleTypeNil $<: t.
-Proof.
-  induct 1; simplify; eauto.
-
-
-  
-
-
-
-Lemma tuple_nil_infer: forall t x a b,
-  hasty x TupleNil t -> ~ (t = Fun a b).
+Lemma hastype_tuple : forall x t a b,
+  (hasty x TupleNil t \/ hasty x (TupleCons a b) t) -> isTupleType t.
 Proof.
   simplify.
-  invert H.
-  equality.
-
-  assert (t = TupleTypeNil \/ exists j e, t = TupleTypeCons j e).
-  induct H; eauto.
-  cases IHhasty; eauto.
-  subst.
-  invert H0; eauto.
-  invert IHhasty; eauto.
-  invert H1.
-  right.
-
-
-
-
-  invert H0; eauto.
-
-  right.
-
-  
-  subst.
-  
-
-  invert H0.
-  econstructor.
-  eauto.
-
-  invert 1.
-  equality.
+  propositional; tac.
+  induct H0; eauto.
+  induct H0; eauto.
 Qed.
-Hint Resolve type_abs_value_abs : core.
- 
+Hint Resolve hastype_tuple: core.
+
+Lemma hastype_tuple_nil : forall x t,
+  hasty x TupleNil t -> isTupleType t.
+Proof.
+  simplify.
+  eapply hastype_tuple.
+  left.
+  eassumption.
+  Unshelve.
+  all:exact (Var "").
+Qed.
+Hint Resolve hastype_tuple_nil : core.
+
+Lemma hastype_tuple_cons : forall x t a b,
+  hasty x (TupleCons a b) t -> isTupleType t.
+Proof.
+  simplify.
+  eapply hastype_tuple.
+  right.
+  eassumption.
+Qed.
+Hint Resolve hastype_tuple_cons : core.
+(*
+Lemma tuple_type : forall t,
+   t $<: TupleTypeNil -> t = TupleTypeNil \/ exists a b, t = TupleTypeCons a b.
+Proof.
+  induct 1; eauto.
+Qed.
+
+Hint Resolve tuple_type.
+*)
+Lemma cheese : forall x e a b,
+  hasty x e (Fun a b) -> value e -> exists c d, e = Abs c d.
+Proof.
+  induct 1; eauto.
+  simplify.
+  invert H0.
+  simplify.
+  invert H1.
+  invert 1.
+  simplify.
+  cases t'.
+  eapply IHhasty; eauto.
+  specialize type_fun_is_not_tuple with (t1 := TupleTypeNil) (t2 := Fun a b).
+  simplify; propositional; eauto.
+  specialize type_fun_is_not_tuple with (t1 := TupleTypeCons t'1 t'2) (t2 := Fun a b).
+  simplify; propositional; eauto.
+Qed.
+Hint Resolve cheese : core.
+
+Lemma tazz : forall a b t,
+   Fun a b $<: t -> exists c d, t = Fun c d.
+Proof.
+  induct 1; eauto.
+Qed.
+
+Hint Resolve tazz : core.
+
+Lemma tazz_rev : forall a b t,
+   t $<: Fun a b -> exists c d, t = Fun c d.
+Proof.
+  induct 1; eauto.
+Qed.
+Hint Resolve tazz_rev : core.
+
   (* Now we're ready for the first of the two key properties to establish that
    * invariant: well-typed programs are never stuck. *)
 Lemma progress : forall e t,
@@ -333,27 +370,18 @@ Lemma progress : forall e t,
   -> value e
   \/ (exists e' : exp, step e e').
 Proof.
-  induct 1; simplify; tac; try equality; eauto.
-  left.
-  econstructor.
-  right.
-  invert H3.
-  eexists; repeat econstructor; eauto.
-  eexists; repeat econstructor; eauto.
-  invert H.
-
-  assert (H5:=type_fun_is_not_tuple).
-  specialize (H5 t1 t2).
-
-
-
-  eauto.
-  invert H3.
-  instantiate (1:= subst e2 x e0).
-  
-  econstructor.
-  
-
+  induct 1; eauto.
+  + right.
+    propositional; tac.
+    assert (Hx := H3).
+    eapply cheese in H3; eauto.
+    tac.
+  + propositional; tac; eauto 10.
+  + propositional; tac; eauto 10.
+    right; tac.
+    induct H0; tac.
+    admit.
+    admit.
 Admitted.
 
 Hint Resolve progress: core.
@@ -399,10 +427,10 @@ Lemma substitution : forall G x t' e t e',
   -> hasty $0 e' t'
   -> hasty G (subst e' x e) t.
 Proof.
-  induct 1; simplify; repeat (eauto || tac || simplify).
+  induct 1; tac; eauto.
 Qed.
 
-Hint Resolve substitution.
+Hint Resolve substitution: core.
 
 
 (* We're almost ready for the other main property.  Let's prove it first
@@ -412,6 +440,21 @@ Lemma preservation0 : forall e1 e2,
   -> forall t, hasty $0 e1 t
     -> hasty $0 e2 t.
 Proof.
+  invert 1; tac; eauto.
+  invert H; eauto.
+  invert H4; eauto.
+  assert (Hx := H1).
+  invert H1; eauto.
+  eapply substitution; eauto.
+  
+
+
+
+
+  simplify.
+  induct 1; tac; eauto.
+  invert H0; eauto.
+
   Print step0.
 
   tac.
