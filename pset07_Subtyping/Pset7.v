@@ -249,6 +249,7 @@ Ltac tac0 :=
   end;
   subst.
 Ltac tac := simplify; subst; propositional; repeat (tac0; simplify; eauto); try equality.
+Ltac t := simplify; propositional; repeat (tac0; simplify); try equality; eauto 6.
 
 Lemma subtype_trans_tmp : forall t2 t1 t3, t1 $<: t2 -> t2 $<: t3 -> t1 $<: t3.
 Proof.
@@ -271,6 +272,85 @@ Proof.
   Unshelve.
   all: (exact "" || exact (Var "")).
 Qed.
+Hint Resolve type_abs_value_abs.
+
+Lemma type_fun_abs: forall x t f g,
+  hasty x (Abs f g) t -> exists a b, Fun a b $<: t.
+Proof.
+  induct 1; tac; eauto.
+Qed.
+Hint Resolve type_fun_abs.
+
+
+Lemma hasty_TupleCons G e e' t:
+  hasty G (TupleCons e e') t ->
+  exists t1 t2, hasty G e t1 /\ hasty G e' t2 /\ TupleTypeCons t1 t2 $<: t.
+Proof.
+  induct 1; eauto.
+  invert IHhasty.
+  invert H1.
+  eexists.
+  eexists.
+  propositional; eauto.
+Qed.
+
+Hint Resolve hasty_TupleCons.
+
+Lemma hasty_TupleNil G t:
+  hasty G TupleNil t -> t = TupleTypeNil.
+Proof.
+  induct 1; tac.
+Qed.
+
+Hint Resolve hasty_TupleNil.
+
+Lemma hasty_App G x1 x2 t:
+  hasty G (App x1 x2) t ->
+  exists t2 t3, hasty G x1 t2 /\ t2 $<: Fun t3 t /\ hasty G x2 t3.
+Proof.
+  induct 1; tac; eauto.
+  eexists; eexists.
+  propositional; eauto.
+Qed.
+Hint Resolve hasty_App : core.
+
+Lemma hasty_Abs G x body t:
+  hasty G (Abs x body) t ->
+    exists a b , Fun a b $<: t /\ hasty (G $+ (x,a)) body b.
+Proof.
+  induct 1; tac; eauto.
+Qed.
+
+Hint Resolve hasty_Abs : core.
+
+Lemma hasty_proj0 G x tail t:
+  hasty G (Proj (TupleCons x tail) 0) t
+  -> exists a tail_type, hasty G x a /\ a $<: t /\ hasty G (TupleCons x tail) (TupleTypeCons a tail_type).
+Proof.
+  induct 1.
+  eapply hasty_TupleCons in H.
+  tac.
+  eexists; eexists.
+  propositional; eauto.
+  tac.
+  eexists.
+  eexists.
+
+  propositional; eauto.
+Qed.
+
+Hint Resolve hasty_proj0 : core.
+
+Lemma hasty_proj G x tail t n:
+  hasty G (Proj (TupleCons x tail) (S n)) t ->
+    exists t', hasty G (Proj tail n) t' /\ t' $<: t.
+Proof.
+  induct 1; tac; eauto.
+  eapply hasty_TupleCons in H.
+  tac.
+Qed.
+
+Hint Resolve hasty_proj : core.
 
 Definition isTupleType t :=
   match t with
@@ -279,6 +359,7 @@ Definition isTupleType t :=
   | Fun _ _ => False
   end.
 Hint Unfold isTupleType.
+
 Lemma type_fun_is_not_tuple: forall t1 t2,
   isTupleType t1 -> (t1 $<: t2 \/ t2 $<: t1) -> isTupleType t2.
 Proof.
@@ -320,6 +401,22 @@ Proof.
   eassumption.
 Qed.
 Hint Resolve hastype_tuple_cons : core.
+
+Lemma tuple_type_cons : forall (t' t t2 :type),
+   t' $<: TupleTypeCons t t2 -> exists a b, t' = TupleTypeCons a b.
+Proof.
+  induct 1; eauto.
+Qed.
+Hint Resolve tuple_type_cons : core.
+
+Lemma hastype_tuple_cons_generalized : forall x t a b,
+  hasty x (TupleCons a b) t -> exists n m, TupleTypeCons n m $<: t.
+Proof.
+  induct 1; eauto.
+  eapply HtSub in H; eauto.
+  tac.
+Qed.
+Hint Resolve hastype_tuple_cons_generalized : core.
 (*
 Lemma tuple_type : forall t,
    t $<: TupleTypeNil -> t = TupleTypeNil \/ exists a b, t = TupleTypeCons a b.
@@ -363,6 +460,53 @@ Proof.
 Qed.
 Hint Resolve tazz_rev : core.
 
+
+(*Lemma tuple_type_cons_2 : forall (t' t t2 :type) n,
+ t' $<: TupleTypeCons t t2 -> proj_t t2 n t -> t' = TupleTypeCons t2 TupleTypeNil.
+Proof.
+invert 1; eauto.*)
+Hint Resolve tuple_type_cons.
+Lemma ho: forall e t t2,
+  hasty $0 e (TupleTypeCons t t2) -> value e -> exists e' : exp, step (Proj e 0) e'.
+Proof.
+induct 1; simplify; eauto.
+invert H.
+invert H1.
+invert H1.
+eexists.
+eauto.
+invert H1.
+apply tuple_type_cons in H0.
+invert H0.
+invert H2.
+eauto.
+Qed.
+
+(*Lemma test: forall e x x0 n, hasty $0 e (TupleTypeCons x x0) -> proj_t x0 n x.
+Proof.
+  induct 1; eauto.
+*)
+
+Lemma tuple_cons : forall e t t2,
+  hasty $0 e (TupleTypeCons t t2) -> value e -> exists a b, e = TupleCons a b.
+Proof.
+  induct 1; simplify; tac; eauto.
+  invert H1.
+  invert H1.
+Qed.
+Hint Resolve tuple_cons : core.
+
+Lemma ho': forall e t t2 n,
+  hasty $0 e (TupleTypeCons t t2) -> value e -> exists e' : exp, step (Proj e (S n)) e'.
+Proof.
+  simplify.
+  specialize (tuple_cons H H0).
+  simplify.
+  tac.
+  invert H0.
+  eauto.
+Qed.
+
   (* Now we're ready for the first of the two key properties to establish that
    * invariant: well-typed programs are never stuck. *)
 Lemma progress : forall e t,
@@ -379,10 +523,11 @@ Proof.
   + propositional; tac; eauto 10.
   + propositional; tac; eauto 10.
     right; tac.
+
     induct H0; tac.
-    admit.
-    admit.
-Admitted.
+    ++ eapply ho; eauto.
+    ++ eapply ho'; eauto.
+Qed.
 
 Hint Resolve progress: core.
 
@@ -410,6 +555,7 @@ Qed.
 
 Hint Resolve weakening.
 
+
 Lemma hasty_change : forall G e t,
   hasty G e t
   -> forall G', G' = G
@@ -432,6 +578,18 @@ Qed.
 
 Hint Resolve substitution: core.
 
+(*
+Lemma projn_type : forall v1 v2 tuple_type G n t2,
+  hasty G (Proj (TupleCons v1 v2) n) t2 -> proj_t t n t2 -> hasty G v1 t2.
+Proof.
+  simplify.
+
+
+  Print proj_t.
+  induct 2.
+
+Admitted.
+*)
 
 (* We're almost ready for the other main property.  Let's prove it first
  * for the more basic [step0] relation: steps preserve typing. *)
@@ -440,26 +598,13 @@ Lemma preservation0 : forall e1 e2,
   -> forall t, hasty $0 e1 t
     -> hasty $0 e2 t.
 Proof.
-  invert 1; tac; eauto.
-  invert H; eauto.
-  invert H4; eauto.
-  assert (Hx := H1).
-  invert H1; eauto.
-  eapply substitution; eauto.
-  
-
-
-
-
-  simplify.
   induct 1; tac; eauto.
-  invert H0; eauto.
-
-  Print step0.
-
-  tac.
-  invert H.
-Admitted.
+  eapply hasty_App in H0; tac.
+  eapply hasty_Abs in H1; tac.
+  eapply substitution; eauto.
+  eapply hasty_proj0 in H1; tac.
+  eapply hasty_proj in H1; tac.
+Qed.
 
 Hint Resolve preservation0.
 (* We also need this key property, essentially saying that, if [e1] and [e2] are
@@ -471,50 +616,13 @@ Lemma generalize_plug : forall e1 C e1',
     -> (forall t, hasty $0 e1 t -> hasty $0 e2 t)
     -> (forall t, hasty $0 e1' t -> hasty $0 e2' t).
 Proof.
-  induct 1; tac.
-
-  Admitted.
-  (*
-  invert H.
-  apply H0.
-  assumption.
-
-  invert H0.
-  invert H2.
-  constructor.
-  eapply IHplug.
-  eassumption.
-  assumption.
-  assumption.
-  assumption.
-
-  invert H1.
-  invert H3.
-  constructor.
-  assumption.
-  eapply IHplug.
-  eassumption.
-  assumption.
-  assumption.
-
-  invert H0.
-  invert H2.
-  econstructor.
-  eapply IHplug.
-  eassumption.
-  assumption.
-  eassumption.
-  assumption.
-
-  invert H1.
-  invert H3.
-  econstructor.
-  eassumption.
-  eapply IHplug.
-  eassumption.
-  assumption.
-  eassumption.
-Qed.*)
+  induct 1; tac; eauto.
+  eapply hasty_App in H2; tac.
+  eapply hasty_App in H3; tac.
+  eapply hasty_TupleCons in H2; tac.
+  eapply hasty_TupleCons in H3; tac.
+  induct H2; eauto.
+Qed.
 
   Hint Resolve generalize_plug.
 
@@ -550,29 +658,5 @@ Proof.
     simplify.
     apply invariant_weaken with (invariant1 := fun e' => hasty $0 e' t); eauto.
     apply invariant_induction; tac; eauto; try equality.
-    tac.
-    eauto.
-
-    simplify.
-    eapply progress.
-    eauto.
-
-    (* Step 1: strengthen the invariant.  In particular, the typing relation is
-     * exactly the right stronger invariant!  Our progress theorem proves the
-     * required invariant inclusion. *)
-    apply invariant_weaken with (invariant1 := fun e' => hasty $0 e' t).
-
-    (* Step 2: apply invariant induction, whose induction step turns out to match
-     * our preservation theorem exactly! *)
-    apply invariant_induction; simplify.
-    equality.
-
-    eapply preservation.
-    eassumption.
-    assumption.
-
-    simplify.
-    eapply progress.
-    eassumption.
-  Qed.
+Qed.
 
