@@ -149,9 +149,66 @@ Open Scope reset_scope.
  *)
 
 (** * Define your semantics here! *)
+Notation "m $! k" := (match m $? k with Some n => n | None => O end) (at level 30).
 
-Axiom exec : trace -> heap -> valuation -> cmd ->
-             trace -> heap -> valuation -> Prop.
+(* Start of expression semantics: meaning of expressions *)
+Fixpoint eval (e : exp) (h : heap) (v : valuation) : nat :=
+  match e with
+  | Const n => n
+  | Var x => v $! x
+  | Read e1 => h $! eval e1 h v
+  | Plus e1 e2 => eval e1 h v + eval e2 h v
+  | Minus e1 e2 => eval e1 h v - eval e2 h v
+  | Mult e1 e2 => eval e1 h v * eval e2 h v
+  end.
+
+Fixpoint beval (b : bexp) (h : heap) (v : valuation) : bool :=
+  match b with
+  | Equal e1 e2 => if eval e1 h v ==n eval e2 h v then true else false
+  | Less e1 e2 => if eval e2 h v <=? eval e1 h v then false else true
+  end.
+
+(* A big-step operational semantics for commands *)
+Inductive exec : trace -> heap -> valuation -> cmd -> trace -> heap -> valuation -> Prop :=
+| ExSkip : forall t h v,
+  exec t h v Skip t h v
+| ExAssign : forall t h v x e,
+  exec t h v (Assign x e) t h (v $+ (x, eval e h v))
+| ExWrite : forall t h v e1 e2,
+  exec t h v (Write e1 e2) t (h $+ (eval e1 h v, eval e2 h v)) v
+| ExSeq : forall t1 t2 t3 h1 v1 c1 h2 v2 c2 h3 v3,
+  exec t1 h1 v1 c1 t2 h2 v2
+  -> exec t2 h2 v2 c2 t3 h3 v3
+  -> exec t1 h1 v1 (Seq c1 c2) t3 h3 v3
+| ExIfTrue : forall t1 h1 v1 b c1 c2 t2 h2 v2,
+  beval b h1 v1 = true
+  -> exec t1 h1 v1 c1 t2 h2 v2
+  -> exec t1 h1 v1 (If_ b c1 c2) t2 h2 v2
+| ExIfFalse : forall t1 h1 v1 b c1 c2 t2 h2 v2,
+  beval b h1 v1 = false
+  -> exec t1 h1 v1 c2 t2 h2 v2
+  -> exec t1 h1 v1 (If_ b c1 c2) t2 h2 v2
+| ExWhileFalse : forall I t h v b c,
+  beval b h v = false
+  -> exec t h v (While_ I b c) t h v
+| ExWhileTrue : forall I t1 h1 v1 b c t2 h2 v2 t3 h3 v3,
+  beval b h1 v1 = true
+  -> exec t1 h1 v1 c t2 h2 v2
+  -> exec t2 h2 v2 (While_ I b c) t3 h3 v3
+  -> exec t1 h1 v1 (While_ I b c) t3 h3 v3
+
+(* Assertions execute only when they are true.  They provide a way to embed
+ * proof obligations within programs. *)
+| ExAssert : forall t h v (a : iassertion),
+  a h v
+  -> exec t h v (Assert a) t h v
+| ExInput : forall t h v x value,
+  exec t h v (Input x) ((In value) :: t) h (v $+ (x, value))
+| ExOutput: forall t h v e,
+  exec t h v (Output e) ((Out (eval e h v)) :: t) h v.
+
+
+
 
 
 (** * Task 2 : Hoare logic *)
@@ -167,6 +224,34 @@ Axiom exec : trace -> heap -> valuation -> cmd ->
  * semantics.  You will need this consistency to prove the correctness of
  * example programs we will provide soon.
  *)
+
+Inductive hoare_triple : assertion -> cmd -> assertion -> Prop :=
+| HtSkip : forall P, hoare_triple P Skip P
+| HtAssign : forall (P : assertion) x e,
+  hoare_triple P (Assign x e) (fun h v => exists v', P h v' /\ v = v' $+ (x, eval e h v'))
+| HtWrite : forall (P : assertion) (e1 e2 : exp),
+  hoare_triple P (Write e1 e2) (fun h v => exists h', P h' v /\ h = h' $+ (eval e1 h' v, eval e2 h' v))
+| HtSeq : forall (P Q R : assertion) c1 c2,
+  hoare_triple P c1 Q
+  -> hoare_triple Q c2 R
+  -> hoare_triple P (Seq c1 c2) R
+| HtIf : forall (P Q1 Q2 : assertion) b c1 c2,
+  hoare_triple (fun h v => P h v /\ beval b h v = true) c1 Q1
+  -> hoare_triple (fun h v => P h v /\ beval b h v = false) c2 Q2
+  -> hoare_triple P (If_ b c1 c2) (fun h v => Q1 h v \/ Q2 h v)
+| HtWhile : forall (I P : assertion) b c,
+  (forall h v, P h v -> I h v)
+  -> hoare_triple (fun h v => I h v /\ beval b h v = true) c I
+  -> hoare_triple P (While_ I b c) (fun h v => I h v /\ beval b h v = false)
+| HtAssert : forall P I : assertion,
+  (forall h v, P h v -> I h v)
+  -> hoare_triple P (Assert I) P
+| HtConsequence : forall (P Q P' Q' : assertion) c,
+  hoare_triple P c Q
+  -> (forall h v, P' h v -> P h v)
+  -> (forall h v, Q h v -> Q' h v)
+  -> hoare_triple P' c Q'.
+
 
 (** Task 2-1: Define your Hoare logic here! *)
 
