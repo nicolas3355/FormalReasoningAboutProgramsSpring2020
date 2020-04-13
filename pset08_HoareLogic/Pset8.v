@@ -225,42 +225,48 @@ Inductive exec : trace -> heap -> valuation -> cmd -> trace -> heap -> valuation
  * example programs we will provide soon.
  *)
 
+(** Task 2-1: Define your Hoare logic here! *)
 Inductive hoare_triple : assertion -> cmd -> assertion -> Prop :=
 | HtSkip : forall P, hoare_triple P Skip P
 | HtAssign : forall (P : assertion) x e,
-  hoare_triple P (Assign x e) (fun h v => exists v', P h v' /\ v = v' $+ (x, eval e h v'))
+  hoare_triple P (Assign x e) (fun t h v => exists v', (P t h v') /\ v = v' $+ (x, eval e h v'))
 | HtWrite : forall (P : assertion) (e1 e2 : exp),
-  hoare_triple P (Write e1 e2) (fun h v => exists h', P h' v /\ h = h' $+ (eval e1 h' v, eval e2 h' v))
+  hoare_triple P (Write e1 e2) (fun t h v => exists h', P t h' v /\ h = h' $+ (eval e1 h' v, eval e2 h' v))
 | HtSeq : forall (P Q R : assertion) c1 c2,
   hoare_triple P c1 Q
   -> hoare_triple Q c2 R
   -> hoare_triple P (Seq c1 c2) R
 | HtIf : forall (P Q1 Q2 : assertion) b c1 c2,
-  hoare_triple (fun h v => P h v /\ beval b h v = true) c1 Q1
-  -> hoare_triple (fun h v => P h v /\ beval b h v = false) c2 Q2
-  -> hoare_triple P (If_ b c1 c2) (fun h v => Q1 h v \/ Q2 h v)
+  hoare_triple (fun t h v => P t h v /\ beval b h v = true) c1 Q1
+  -> hoare_triple (fun t h v => P t h v /\ beval b h v = false) c2 Q2
+  -> hoare_triple P (If_ b c1 c2) (fun t h v => Q1 t h v \/ Q2 t h v)
 | HtWhile : forall (I P : assertion) b c,
-  (forall h v, P h v -> I h v)
-  -> hoare_triple (fun h v => I h v /\ beval b h v = true) c I
-  -> hoare_triple P (While_ I b c) (fun h v => I h v /\ beval b h v = false)
-| HtAssert : forall P I : assertion,
-  (forall h v, P h v -> I h v)
+  (forall t h v, P t h v -> I t h v)
+  -> hoare_triple (fun t h v => I t h v /\ beval b h v = true) c I
+  -> hoare_triple P (While_ I b c) (fun t h v => I t h v /\ beval b h v = false)
+| HtAssert : forall (P : assertion)  (I : iassertion),
+  (forall t h v, P t h v -> I h v)
   -> hoare_triple P (Assert I) P
 | HtConsequence : forall (P Q P' Q' : assertion) c,
   hoare_triple P c Q
-  -> (forall h v, P' h v -> P h v)
-  -> (forall h v, Q h v -> Q' h v)
+  -> (forall t h v, P' t h v -> P  t h v)
+  -> (forall t h v, Q  t h v -> Q' t h v)
   -> hoare_triple P' c Q'.
 
-
-(** Task 2-1: Define your Hoare logic here! *)
-
-Axiom hoare_triple : assertion -> cmd -> assertion -> Prop.
-
+Hint Constructors hoare_triple : core.
 Notation "[[ tr , h , v ]] ~> e" := (fun tr h v => e%reset) (at level 90).
 Notation "{{ P }} c {{ Q }}" :=
   (hoare_triple P c%cmd Q) (at level 90, c at next level).
-
+(* BEGIN handy tactic that we suggest for these proofs *)
+Ltac t :=
+  match goal with
+  | [ H : ex _ |- _ ] => invert H
+  | [ H : _ /\ _ |- _ ] => invert H
+  | [ |- context[_ $+ (?x, _) $? ?y] ] => cases (x ==v y); simplify
+  | [ |- context[?x ==v ?y] ] => cases (x ==v y); simplify
+  | [ H : exec _ _ _ _ _ _ _ |- _ ] => invert H
+ end;
+  subst.
 (** Task 2-2: Prove the consistency theorem. *)
 
 Theorem hoare_triple_big_step :
@@ -270,8 +276,11 @@ Theorem hoare_triple_big_step :
       exec tr h v c tr' h' v' ->
       pre tr h v -> post tr' h' v'.
 Proof.
+  induct 1; simplify; try(t; eauto; eexists; propositional; assumption).
+  + propositional.
+    - cases b.  simplify. t. invert H1; eauto. apply H in H2. assert (IH' := IHhoare_triple). specialize IHhoare_triple with (tr:=tr) (h:=h) (v:=v) (tr':=t2) (h':=h2) (v':=v2). apply IHhoare_triple in H13. clear IHhoare_triple. 
+  + apply IHhoare_triple in H2. eauto. eauto. 
 Admitted.
-
 
 (** * Task 3: Verification of some example programs *)
 
