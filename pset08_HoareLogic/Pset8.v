@@ -247,6 +247,10 @@ Inductive hoare_triple : assertion -> cmd -> assertion -> Prop :=
 | HtAssert : forall (P : assertion)  (I : iassertion),
   (forall t h v, P t h v -> I h v)
   -> hoare_triple P (Assert I) P
+| HtInput : forall (P: assertion) x, 
+  hoare_triple P (Input x) (fun t h v => exists value v' t', (P t' h v') /\ v = v' $+ (x, value) /\ (t = (In value) :: t')) 
+| HtOutput: forall (P: assertion) e,
+    hoare_triple P (Output e) (fun t h v => exists value t', (P t' h v) /\ eval e h v = value /\ (t = (Out value) :: t'))
 | HtConsequence : forall (P Q P' Q' : assertion) c,
   hoare_triple P c Q
   -> (forall t h v, P' t h v -> P  t h v)
@@ -257,17 +261,23 @@ Hint Constructors hoare_triple : core.
 Notation "[[ tr , h , v ]] ~> e" := (fun tr h v => e%reset) (at level 90).
 Notation "{{ P }} c {{ Q }}" :=
   (hoare_triple P c%cmd Q) (at level 90, c at next level).
-(* BEGIN handy tactic that we suggest for these proofs *)
-Ltac t :=
-  match goal with
-  | [ H : ex _ |- _ ] => invert H
-  | [ H : _ /\ _ |- _ ] => invert H
-  | [ |- context[_ $+ (?x, _) $? ?y] ] => cases (x ==v y); simplify
-  | [ |- context[?x ==v ?y] ] => cases (x ==v y); simplify
-  | [ H : exec _ _ _ _ _ _ _ |- _ ] => invert H
- end;
-  subst.
+
 (** Task 2-2: Prove the consistency theorem. *)
+
+(* Let's prove that the intuitive description given above really applies to this
+ * predicate.  First, a lemma, which is difficult to summarize intuitively!
+ * More or less precisely this obligation shows up in the main proof below. *)
+Lemma hoare_triple_big_step_while: forall (I : assertion) b c,
+  (forall t h v t' h' v', exec t h v c t' h' v'
+                     -> I t h v
+                     -> beval b h v = true
+                     -> I t' h' v')
+  -> forall t h v t' h' v', exec t h v (While_ I b c) t' h' v'
+                       -> I t h v
+                       -> I t' h' v' /\ beval b h' v' = false.
+Proof.
+  induct 2; eauto.
+Qed.
 
 Theorem hoare_triple_big_step :
   forall pre c post,
@@ -276,11 +286,43 @@ Theorem hoare_triple_big_step :
       exec tr h v c tr' h' v' ->
       pre tr h v -> post tr' h' v'.
 Proof.
-  induct 1; simplify; try(t; eauto; eexists; propositional; assumption).
-  + propositional.
-    - cases b.  simplify. t. invert H1; eauto. apply H in H2. assert (IH' := IHhoare_triple). specialize IHhoare_triple with (tr:=tr) (h:=h) (v:=v) (tr':=t2) (h':=h2) (v':=v2). apply IHhoare_triple in H13. clear IHhoare_triple. 
-  + apply IHhoare_triple in H2. eauto. eauto. 
-Admitted.
+  induct 1; eauto; invert 1; eauto. 
+
+  simplify.
+  eapply hoare_triple_big_step_while; eauto.
+  + eexists. eexists. eexists. eauto.
+Qed.
+Hint Rewrite hoare_triple_big_step : core.                                                                                             
+Lemma HtStrengthenPost : forall (t : trace) (P Q Q' : assertion) c,
+  hoare_triple P c Q
+  -> (forall t h v, Q t h v -> Q' t h v)
+  -> hoare_triple P c Q'.
+Proof.
+  simplify; eapply HtConsequence; eauto.
+Qed.
+
+
+(* Finally, three tactic definitions that we won't explain.  The overall tactic
+ * [ht] tries to prove Hoare triples, essentially by rote application of the
+ * rules.  Some other obligations are generated, generally of implications
+ * between assertions, and [ht] also makes a best effort to solve those. *)
+
+Ltac ht1 := apply HtSkip || apply HtAssign || eapply HtInput || eapply HtOutput || apply HtWrite || eapply HtSeq
+            || eapply HtIf || eapply HtWhile || eapply HtAssert
+            || eapply HtStrengthenPost.
+
+Ltac t := cbv beta; propositional; subst;
+          repeat match goal with
+                 | [ H : ex _ |- _ ] => invert H; propositional; subst
+                 end;
+          simplify;
+          repeat match goal with
+                 | [ _ : context[?a <=? ?b] |- _ ] => destruct (a <=? b); try discriminate
+                 | [ H : ?E = ?E |- _ ] => clear H
+                 end; simplify; propositional; auto; try equality; try linear_arithmetic.
+
+Ltac ht := simplify; repeat ht1; t.
+
 
 (** * Task 3: Verification of some example programs *)
 
@@ -303,8 +345,10 @@ Theorem add_two_inputs_ok:
     tr = nil ->
     exists vx vy, tr' = [Out (vx + vy); In vy; In vx].
 Proof.
-Admitted.
-
+  eapply hoare_triple_big_step; ht; eauto.
+  exact [].
+Qed.
+  
 (** Task 3-2: finding the maximum of three numbers -- prove [max3_ok] *)
 
 Example max3 :=
@@ -339,7 +383,10 @@ Theorem max3_ok:
     tr = nil ->
     max3_spec tr'.
 Proof.
-Admitted.
+  eapply hoare_triple_big_step.
+  ht. exact [].
+  all: eapply M3s; linear_arithmetic.
+Qed.
 
 (** Task 3-3: Fibonacci sequence -- prove [fibonacci_ok] *)
 
@@ -352,12 +399,77 @@ Inductive fibonacci_spec : trace -> Prop :=
       fibonacci_spec (Out y :: Out x :: tr) ->
       fibonacci_spec (Out (x + y) :: Out y :: Out x :: tr).
 
+Lemma fibnacci_spec_helper: forall a l, fibonacci_spec (a :: l) -> fibonacci_spec l.
+Proof.
+induct 1.
+apply Fs0.
+apply Fs1.
+assumption.
+Qed.
+
+Lemma fibnacci_spec_helper_2: forall a b c l, fibonacci_spec (a :: b :: c :: l) -> exists d, Out d = a /\ exists e, Out e = b /\ exists f, Out f = c /\ d = e + f. 
+Proof.
+induct 1.
+eexists.
+eexists.
+eexists.
+eexists.
+eexists.
+eexists.
+eexists.
+propositional.
+linear_arithmetic.
+Qed.
+
+Lemma fibonacci_spec_helper_3: forall a, fibonacci_spec ([a]) -> exists b, Out b = a /\ b = 1.
+Proof.
+  simplify.
+  invert H.
+  eexists.
+  eauto.
+Qed.
+
+Lemma fibonacci_spec_helper_4: forall a b, fibonacci_spec ([a; b]) -> (exists c, Out c = a /\ c = 1) /\ (exists d, Out d = b /\ d = 1).
+Proof.
+  simplify.
+  invert H; eexists; eexists; eauto.
+Qed.
+
+
+Lemma fibonacci_spec_helper_5: forall a b tr, fibonacci_spec (a :: b :: tr) -> fibonacci_spec (b :: tr) -> exists c, Out c = a /\ exists d, Out d = b /\ fibonacci_spec (Out(c + d) :: a :: b :: tr).
+Proof.
+ induct tr; simplify.
+  apply fibonacci_spec_helper_4 in H.
+  apply fibonacci_spec_helper_3 in H0.
+  invert H. invert H0. invert H1. invert H2.
+  propositional.
+  eexists. eexists. eauto. eexists. 
+  propositional.
+  eauto.
+  ht.
+  assert (fibonacci_spec ([Out 1; Out 1])) by apply Fs2.
+  assert (2 = 1 + 1) by linear_arithmetic. 
+  rewrite H0.
+  apply Fsn.
+  apply Fs2.
+  apply fibnacci_spec_helper_2 in H.
+  ht. eexists. eexists. eauto. eexists. propositional.
+  apply Fsn in H0.
+  apply Fsn in H0.
+  assert(x0 + x1 = x1 + x0) by linear_arithmetic. 
+  rewrite H.
+  assert(x0 + (x1 + x0) = (x1 + x0) + x0) by linear_arithmetic.  
+  rewrite <- H1.
+  assumption.
+Qed.
+
+(* /\ (length l = S (v $! "cnt")) /\ S(length l) > 0 -> ((Out (v $! "x")) = (nth (v $! "cnt" - 2) l (Out 0)) /\ (Out (v $! "y")) = (nth (v $! "cnt" - 1) l (Out 1))) *)
 Example fibonacci (n: nat) :=
   ("cnt" <- 0;;
    "x" <- 0;;
    "y" <- 1;;
    output "y";;
-   {{ fun _ _ _ => True }} (* You may change this loop invariant to make your
+   {{ fun l h v => True /\ fibonacci_spec l /\ fibonacci_spec (tail l) /\ length l = S (v $! "cnt") /\ (((Out (v $! "x")) = hd (Out 0) (tail l) ) /\ ((Out (v $! "y")) = hd (Out 1) l))  }} (* You may change this loop invariant to make your
                             * proof easier! *)
    while "cnt" < n loop
      "tmp" <- "y";;
@@ -373,17 +485,64 @@ Theorem fibonacci_ok (n: nat):
     tr = nil ->
     fibonacci_spec tr'.
 Proof.
-Admitted.
-
-
-(** * Task 4-1: please estimate the time you have spent on this pset so far:
+  eapply hoare_triple_big_step.
+  ht. exact []. apply Fs1. apply Fs0. exact [].
+  2: {
+  induct x0.
+  simplify.
+  linear_arithmetic.
+  simplify.
+  apply fibnacci_spec_helper in H.
+  propositional.
+  }
+  
+  cases x0.
+  + simplify.
+    assert ((x1 $! "x") = 0) by equality.
+    assert ((x1 $! "y") = 1) by equality.
+    rewrite H0.
+    rewrite H1.
+    simplify.
+    apply Fs1.
+  +
+    cases x0.
+    ++
+      simplify.
+      apply fibonacci_spec_helper_3 in H.
+      invert H.
+      propositional.
+      assert ((x1 $! "y") = x) by equality.
+      assert ((x1 $! "x") = 0) by equality.
+      rewrite H0.
+      rewrite H2.
+      rewrite H1.
+      simplify.
+      apply Fs2.
+    ++
+      specialize fibonacci_spec_helper_5.
+      simplify.
+      assert (H':=H).
+      apply H0 with (a:=i) (b:=i0) (tr:=x0) in H.
+      invert H.
+      invert H1.
+      invert H2.
+      propositional. 
+      assert (x = (x1 $! "y")) by equality.
+      assert (x2 = (x1 $! "x")) by equality.
+      subst.
+      assert ((x1 $! "y") +  (x1 $! "x") = (x1 $! "x") + (x1 $! "y")) by linear_arithmetic.
+      rewrite <- H1.
+      assumption.
+      assumption.
+Qed.
+ (** * Task 4-1: please estimate the time you have spent on this pset so far: 12
 
   space for work provided here (not graded):
 
 *)
 
 (** * Task 4-2: please subtract the answer of 4-1 from 8 hours:
-   (8 hours is our target time when designing these psets):
+   (8 hours is our target time when designing these psets): 4
 
   space for work provided here (not graded):
 
