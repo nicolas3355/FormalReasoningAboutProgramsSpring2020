@@ -488,12 +488,12 @@ Proof.
   eapply hoare_triple_big_step.
   ht. exact []. apply Fs1. apply Fs0. exact [].
   2: {
-  induct x0.
-  simplify.
-  linear_arithmetic.
-  simplify.
-  apply fibnacci_spec_helper in H.
-  propositional.
+    induct x0.
+    simplify.
+    linear_arithmetic.
+    simplify.
+    apply fibnacci_spec_helper in H.
+    propositional.
   }
   
   cases x0.
@@ -563,5 +563,81 @@ Qed.
  * for doing more, but feel free to prove to your heart's content -- we won't
  * take off any points either, and we'll help you in office hours if we can.
  *)
+Fixpoint max_two (n m:nat) {struct m} : nat :=
+    match n, m with
+    | O, _ => m
+    | S n', O => S n'
+    | S n', S m' => S (max_two n' m')
+    end.
 
-(** Define your own program and prove its correctness here! *)
+Lemma max_two_h: forall n m, n <= m -> max_two n m = m.
+induct n; induct m; simplify; try linear_arithmetic. assert (n <= m) by linear_arithmetic.
+apply IHn in H0. linear_arithmetic.
+Qed.
+
+Lemma max_two_h': forall n m, m < n -> max_two n m = n.
+induct n; induct m; simplify; try linear_arithmetic. assert (n > m) by linear_arithmetic.
+apply IHn in H0. linear_arithmetic.
+Qed.
+
+
+Inductive max_spec: nat -> heap -> trace -> Prop :=
+| mnill: forall h, max_spec 0 h []
+| m0: forall h, max_spec 0 h [Out (h $! 0)]
+| m1: forall h, max_spec 1 h [Out (h $! 0)]
+| msn: forall (n: nat) h a,
+    max_spec n h [Out a] ->
+    max_spec (n + 1) h [Out (max_two (h $! (n)) (a)) ]. 
+
+(* prints max of heap (up to n) to trace *)
+Example max(n: nat):=
+    ("i" <- 0;;
+    "max" <- *["i"];;
+    {{ fun tr h v => ((v $! "i" = 0) -> max_spec 0 h [Out (v $! "max")])  /\  ((lt (v $! "i")  n) -> max_spec (v $! "i") h [Out (v $! "max")] /\ tr = []) /\ (lt n (v $! "i") -> max_spec (n-1) h tr /\ tr = [Out (v $! "max")]) /\ ((v $! "i") = n -> max_spec (n) h [Out (v $! "max")]) /\ tr = []}}
+    while "i" < n loop
+      when  "max" < *["i"] then
+        "max" <- *["i"]
+      else
+        Skip
+      done;;
+      "i" <- "i" + 1;;  
+      Skip
+    done;;
+    output "max") % cmd.
+
+(*Theorem max_correct (n: nat):
+  forall tr h v tr' h' v',
+    exec tr h v (max n) tr' h' v' ->
+    tr = nil ->
+    forall (a: nat) (i: nat), h = h' -> i < n -> tr' = [Out a] -> h $! i <= a.
+Proof.*)
+
+Theorem max_correct (n: nat):
+  forall tr h v tr' h' v',
+    exec tr h v (max n) tr' h' v' ->
+    tr = nil ->
+    max_spec n h' tr'.
+Proof.
+  eapply hoare_triple_big_step.
+  ht; try apply m0.
+  exact [].
+  6:{
+    cases l.
+    propositional.
+    assert (n < S m) by linear_arithmetic.
+    propositional.
+    equality.
+   }
+  5: exact []. 
+
+  apply msn in H1.
+  rewrite max_two_h' with (m:= (x0 $! "max")) (n:=  (h $! (x0 $! "i"))) in H1; assumption.
+  apply msn in H1.
+  rewrite max_two_h with (m:= (x $! "max")) (n:=  (h $! (x $! "i"))) in H1. assumption.
+  assumption.
+  apply msn in H0.
+  rewrite max_two_h' with (m:= (x0 $! "max")) (n:=  (h $! (x0 $! "i"))) in H0; assumption.
+  apply msn in H0.
+  rewrite max_two_h with (m:= (x $! "max")) (n:=  (h $! (x $! "i"))) in H0; assumption.
+Qed.
+ 
