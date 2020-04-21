@@ -1,6 +1,4 @@
 Require Import Frap Pset9Sig.
-(** * 6.822 Formal Reasoning About Programs, Spring 2020 - Pset 9 *)
-
 (* Authors: Adam Chlipala (adamc@csail.mit.edu),
  * Peng Wang (wangpeng@csail.mit.edu) *)
 
@@ -107,7 +105,7 @@ Fixpoint llist' (ls : list nat) (p : nat) : hprop :=
   | nil => [| p = 0 |]
   | x :: ls' => [| p <> 0 |] * exists p', p |--> [x; p'] * llist' ls' p'
   end%sep.
-
+(* [m] for memory! *)
 (* Let's define a less precise version, which forgets exactly which data a list
  * stores, only remembering that there is indeed a list rooted at [p]. *)
 Definition llist (p : nat) :=
@@ -319,7 +317,36 @@ Definition mtreep (p : nat) : hprop :=
 (* Space is provided here for additional lemmas about [mtree] and [mtree']. *)
 
 
+Lemma mtree'_null : forall {t p}, p = 0
+  -> mtree' t p === [| t = Leaf |].
+Proof.
+  heq; cases t; cancel.
+Qed.
 
+Theorem mtree_null : forall p, p = 0
+  -> mtree p === emp.
+Proof.
+  unfold mtree; simplify.
+  setoid_rewrite (mtree'_null H).
+  (* setoid_rewrite does not support "with", just positional arguments *)
+  heq; cancel.
+Qed.
+
+Lemma mtree'_nonnull : forall {t p}, p <> 0
+  -> mtree' t p === exists l r lp x rp, [| t = Node l x r |] * p |--> [lp ; x; rp] * mtree' l lp * mtree' r rp.
+Proof.
+  heq; cases t; cancel.
+  equality.
+  invert H0; cancel.
+Qed.
+
+Theorem mtree_nonnull : forall {p}, p <> 0
+  -> mtree p === exists x lp rp, p |--> [lp; x; rp] * mtree lp * mtree rp.
+Proof.
+  unfold mtree; simplify.
+  setoid_rewrite (mtree'_nonnull H).
+  heq; cancel.
+Qed.
 
 Opaque mtree.
 (* ^-- Keep predicates opaque after you've finished proving all the key
@@ -363,8 +390,35 @@ Theorem lookup_ok : forall x p,
     lookup x p
   {{_ ~> mtreep p}}.
 Proof.
-Admitted.
-
+  intros.
+  unfold mtreep in *.
+  repeat step.
+  simp.
+  apply HtWeaken with (P := (mtree r * p |-> r * [|p = 0 -> False|])%sep); cancel.
+  apply HtStrengthen with (Q := fun _ => (mtree r * p |-> r * [| p <> 0 |])%sep); cancel.
+  repeat eapply HtFrame.
+  loop_inv (fun r : nat => mtree r)
+           (fun (r : nat) (_ : bool) => mtree r); cancel.
+  cases (acc ==n 0).
+  + step.
+    cancel.
+  + step.
+    setoid_rewrite mtree_nonnull; try assumption.
+    step.
+    cases (x ==n r0).
+    ++
+      step.
+      cancel.
+      rewrite (mtree_nonnull n).
+      cancel.
+    ++
+      cases (x <=? r0); (
+        repeat step;
+        eapply exis_right;
+        repeat cancel;
+        rewrite (mtree_nonnull n);
+        cancel).
+Qed.
 
 (* And here's the operation to add a new key to a tree. *)
 Definition insert (x p : nat) :=
@@ -403,7 +457,41 @@ Theorem insert_ok : forall x p,
     insert x p
   {{_ ~> mtreep p}}.
 Proof.
-Admitted.
+  simp.
+  loop_inv (fun p : nat => mtreep p)
+           (fun (p : nat) (_  : unit) => mtreep p).
+  all: unfold mtreep in *; cancel.
+  cases (r ==n 0).
+  ++ 
+    repeat step.
+    cancel.
+    rewrite (mtree_nonnull H).
+    cancel.
+    assert (mtree 0 === emp) by (apply mtree_null; linear_arithmetic).
+    rewrite H1; cancel.
+  ++ 
+    step.
+    apply mtree_nonnull in n.
+    apply HtWeaken with (P := (mtree r * acc |-> r * [|acc = 0 -> False|])%sep); cancel.
+    repeat eapply HtFrame.
+    rewrite n.
+    step.
+    cases (x <=? r0).
+    +++
+      step.
+      eapply exis_right.
+      repeat cancel.
+      rewrite H0.
+      cancel.
+    +++
+      step.
+      eapply mtree_nonnull in n.
+      eapply exis_right.
+      repeat cancel.
+      rewrite n.
+      cancel.
+      linear_arithmetic.
+Qed.
 
 (* Our solution also includes a proof that the Hoare triples in this pset
  * correspond to the usual operational semantics... which you do not need
