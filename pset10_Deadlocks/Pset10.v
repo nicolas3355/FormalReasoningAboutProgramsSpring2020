@@ -33,93 +33,6 @@ Example bad: prog. Admitted.
 (* And now, explain why the total-order rule would reject your example by copy-pasting
    the one rule which rejects it from Pset10Sig.v and briefly describing how it would
    reject it: *)
-Lemma progPop: forall p x xs,
-  x :: xs = progOf p -> exists y ys, (p = y :: ys) /\ snd y = x.
-Proof.
-  simplify.
-  cases p.
-  simplify.
-  equality.
-  exists p.
-  exists p0.
-  propositional; eauto.
-  cases p.
-  simplify.
-  equality.
-Qed.
-
-Hint Resolve progPop : core.
-
-Lemma progOfEmpty: forall p,
-  [] = progOf p -> p = [].
-Proof.
-  simplify.
-  cases p; eauto.
-  cases p.
-  simplify.
-  equality.
-Qed.
-
-Hint Resolve progOfEmpty : core.
-
-Lemma finished_no_locks : forall a,
-  goodCitizen (fst a) (snd a) {} ->
-  Forall finished (progOf [a]) -> locksOf [a] = {}.
-Proof.
-  intros.
-  cases a.
-  invert H0.
-  simplify.
-  invert H3.
-  invert H.
-  sets.
-Qed.
- 
-(* FILL IN explanation here *)
-Lemma finished_no_locks_l : forall p,
-  Forall (fun h => goodCitizen (fst h) (snd h) {}) p
-  -> Forall finished (progOf p)
-  -> locksOf p = {}.
-Proof.
-  simplify.
-  induct p; eauto.
-  cases a.
-  simplify.
-  invert H0.
-  invert H3.
-  invert H.
-  simplify.
-  invert H2.
-  replace ({ } \cup ({ } \cup locksOf p)) with (locksOf p) by sets.
-  apply IHp; eauto.
-Qed.
-
-(*
-Lemma step_cat' : forall h h' l l' (p: list (locks * cmd)) (a : cmd)(a':cmd),
-   goodCitizen l a { } 
-   -> Forall finished (progOf p)
-   -> step0 (h, l, a) (h', l', a')
-   -> exists h'', step (h, l \cup (locksOf p), a :: (progOf p)) (h'',l' \cup (locksOf p), a':: (progOf p)).
-Proof.
-  simplify.
-  induct p.
-  simplify.
-  replace ({ } \cup l) with l by sets.
-  replace (l' \cup { }) with l' by sets.
-  eauto.
-  cases a.
-  simplify.
-  invert H0.
-
-  assert (p = []) by admit.
-  subst.
-  simplify.
-  eauto.
-  admit.
-  invert H; simplify; eauto.
-  eauto.
-Qed.
-*)
 (* The two questions above are not graded, but we hope they help you understand
    the material better! *)
 Lemma tyez: forall (x: locks * cmd) h res_locks,
@@ -149,45 +62,74 @@ Proof.
     sets.
 Qed.
 
-Theorem if_no_locks_held_then_progress : forall h p,
-      Forall (fun l_c => goodCitizen (fst l_c) (snd l_c) {}) p
-      -> locksOf p = {}
-      -> Forall (fun l_c => finished (snd l_c)) p
-         \/ exists h_l_p', step (h, locksOf p, progOf p) h_l_p'.
+Lemma if_no_locks_held_then_progress' : forall h c l,
+    goodCitizen {} c l
+    -> finished c \/ exists h' l' c', step0 (h, {}, c) (h', l', c').
 Proof.
   simplify.
-  induct p; eauto.
-  cases a.
-  invert H.
-  eapply tyez in H3.
+  induct c; eauto.
+  + invert H0.
+    specialize (IHc l2).
+    propositional.
+    ++ invert H1.
+       right.
+       eauto.
+    ++ right.
+       invert H1.
+       invert H0.
+       invert H1.
+       eauto.
+  + invert H; right; eauto.
+  + invert H; right; eauto.
+Qed.
+
+Lemma empty: forall a p, locksOf( a::p ) = {} -> fst a = {} /\ locksOf p = {}.
+Proof.
   simplify.
+  cases a.
+  sets.
+Qed.
+
+Theorem if_no_locks_held_then_progress : forall h p,
+    Forall (fun l_c => goodCitizen (fst l_c) (snd l_c) {}) p
+    -> locksOf p = {}
+    -> Forall (fun l_c => finished (snd l_c)) p
+         \/ exists h_l_p', step (h, locksOf p, progOf p) h_l_p'.
+Proof.
+simplify.
+  induct p; eauto.
+  invert H.
+  apply empty in H0.
+  cases a.
   assert (s = {}) by sets.
-  subst.
-  assert (locksOf p = {}) by sets.
   rewrite H in *.
-  propositional; simplify.
-  + 
-    left.
-    econstructor.
+  simplify.
+  eapply if_no_locks_held_then_progress' in H3.
+  propositional.
+  + left.
+    econstructor; eauto.
+  + right.
+    rewrite H2 in *.
+    invert H0.
     simplify.
+    invert H3.
     eauto.
-    eauto.
-  + invert H2.
+  + Check StepThread1.  
     right.
-    eapply step_cat.
-    eassumption.
-  + invert H1.
-    cases x.
-    cases p0.
-    right.
-    eexists.
-    eapply StepThread1.
+    rewrite H2 in *.
+    simplify.
+    invert H0.
+    invert H5.
+    invert H.
     eauto.
   + right.
-    Check step_cat.
-    invert H2.
-    eapply step_cat in H3.
+    rewrite H2 in *.
+    invert H0.
     invert H3.
+    apply step_cat with (a:= c) in H.
+    invert H.
+    eexists.
+    simplify.
     eauto.
 Qed.
 
@@ -200,36 +142,22 @@ Lemma who_has_the_lock'' : forall h a l l1 c l2,
          \/ (exists a', a' < a /\ a' \in l).
 Proof.
   simplify.
-  induct c; eauto.
+  induct c; eauto 6.
   + invert H0.
-    eapply IHc in H6; eauto.
-    propositional.
-    - invert H0.
-      right.
-      left.
-      eauto.
-    - invert H3.
-      invert H0.
-      invert H3.
-      right.
-      left.
-      eauto.
-  + right; left.
-    eauto.
-  + right; left.
-    eauto.
+    eapply IHc in H6; eauto; propositional.
+    ++ invert H0.
+       eauto 6.
+    ++ invert H3.
+       invert H0.
+       invert H3.
+       eauto 7.
   + right.
     invert H.
-    excluded_middle (a0 \in l).
-    - eauto 10.
-    - left.
-      eauto.
-  + right.
-    invert H.
-    eauto 10.
+    excluded_middle (a0 \in l); eauto 6.
+  + invert H; eauto 8.
 Qed.
 
- Lemma who_has_the_lock' : forall h a l l1 c,
+Lemma who_has_the_lock' : forall h a l l1 c,
       goodCitizen l1 c {}
       -> a \in l1
       -> l1 \subseteq l
@@ -240,7 +168,9 @@ Proof.
   assert (H':= H).
   eapply who_has_the_lock'' in H; eauto.
   cases H; eauto.
-  right. invert H. invert H'. 
+  right. 
+  invert H.
+  invert H'. 
   sets.
 Qed.
 
@@ -258,18 +188,17 @@ Proof.
     simplify.
     cases H1.
     assert (H':=H).
-    apply who_has_the_lock' with (h:=h) (a:= a) (l:=l) in H; eauto.
-    2: sets.
-    propositional.
-    - left.
-      invert H3.
-      invert H.
-      invert H3.
-      eauto.
-    - assert (locksOf l0 \subseteq l) by sets.
-      propositional.
-      invert H4.
-      eauto.
+    eapply who_has_the_lock' with (l:=l) in H; eauto; try sets.
+    propositional. 
+    ++ left.
+       invert H3.
+       invert H.
+       invert H3.
+       eauto.
+    ++ assert (locksOf l0 \subseteq l) by sets.
+       propositional.
+       invert H4.
+       eauto.
 Qed.
 
 Theorem if_lock_held_then_progress : forall bound a h p,
@@ -282,15 +211,16 @@ Proof.
   simplify.
   induct bound; eauto.
   linear_arithmetic.
-  assert (Hx := H).
+  assert (H' := H).
   eapply who_has_the_lock in H; eauto.
   cases H.
-  invert H.
-  eauto.
-  invert H.
-  propositional.
-  cases a; try linear_arithmetic.
-  eapply IHbound in Hx; eauto.
+  + invert H.
+    eauto.
+  +
+    invert H.
+    propositional.
+    cases a; try linear_arithmetic.
+    eapply IHbound in H'; eauto.
 Qed.
 
   
@@ -304,16 +234,13 @@ Lemma deadlock_freedom' :
 Proof.
   simplify.
   excluded_middle (exists a, a \in locksOf p).
-  - invert H0.
+  + invert H0.
     eapply if_lock_held_then_progress in H; eauto.
     propositional; eauto.
-  - eapply if_no_locks_held_then_progress in H.
-    2: {
-      sets.
-      assert (exists a, locksOf p a) by eauto.
-      eauto.
-    }
-    propositional; eauto.
+  + eapply if_no_locks_held_then_progress in H; propositional; eauto.
+    sets.
+    assert (exists a, locksOf p a) by eauto.
+    contradiction.
 Qed.
 
 (* Here's how we can use [a_useful_invariant] to go from [deadlock_freedom'] to
