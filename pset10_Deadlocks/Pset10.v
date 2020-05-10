@@ -35,33 +35,6 @@ Example bad: prog. Admitted.
    reject it: *)
 (* The two questions above are not graded, but we hope they help you understand
    the material better! *)
-Lemma tyez: forall (x: locks * cmd) h res_locks,
-   goodCitizen (fst x) (snd x) res_locks -> 
-   finished (snd x) \/ (exists h_l_c' : heap * locks * cmd,
-                                    step0 (h, fst x, snd x) h_l_c').
-Proof.
-  simplify.
-  cases x.
-  simplify.
-  induct c; eauto; right.
-  +
-    invert H0.
-    specialize (IHc h l2).
-    propositional.
-    invert H1.
-    eauto.
-    invert H1.
-    cases x.
-    cases p.
-    eapply StepBindRecur in H0.
-    eauto.
-  + eexists; econstructor; invert H.
-    specialize (H2 a).
-    sets.
-  + eexists; econstructor; invert H.
-    sets.
-Qed.
-
 Lemma if_no_locks_held_then_progress' : forall h c l,
     goodCitizen {} c l
     -> finished c \/ exists h' l' c', step0 (h, {}, c) (h', l', c').

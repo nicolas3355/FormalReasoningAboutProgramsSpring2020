@@ -78,7 +78,18 @@ Lemma ht_increment : forall init,
     (fun _ _ => True)
     (fun _ h => h $! 0 > init).
 Proof.
-Admitted.
+  simp.
+  fork
+    (fun h => h$! 0 >= init)
+    (fun (h: heap) (h': heap) => (h $!0 = h'$! 0) \/ h'$!0 > init )
+    (fun (v: unit) h => h$! 0 > init)
+    (fun h => h$! 0 >= init)
+    (fun (h: heap) (h': heap) => (h $!0 = h'$! 0) \/ h'$!0 > init )
+    (fun (v: unit) h => h$! 0 > init).
+  all: simp.
+  + eapply HtBind with (Q1 := (fun (v : nat) (h : heap) => v >= init));simp; eapply HtAtomic; simp.
+  + eapply HtBind with (Q1 := (fun (v : nat) (h : heap) => v >= init));simp; eapply HtAtomic; simp.
+Qed.
 
 
 (* Part 3: prove soundness of the program logic *)
@@ -150,11 +161,126 @@ Proof. induct 1; simplify; eauto. Qed.
 Hint Extern 1 (_ >= _) => linear_arithmetic : core.
 Hint Constructors notAboutToFail : core.
 
+Lemma guarantee :
+  forall (t : Set) P (c : cmd t) R G Q,
+    hoare_triple P R c G Q ->
+    forall h,
+      P h ->
+      forall h' c',
+        step (h, c) (h', c') ->
+        G^* h h'.
+Proof.
+  induct 1; simp.
+  + invert H3; simp.
+    eapply IHhoare_triple; eauto.
+    econstructor.
+  + invert H5; simp.
+    ++ eapply H2 in H4.
+       eapply IHhoare_triple1 in H8; eauto.
+       eapply trc_imply; eauto.
+    ++ eapply H3 in H4.
+       eapply IHhoare_triple2 in H8; eauto.
+       eapply trc_imply; eauto.
+  + invert H1.
+  + invert H3; simp; eauto.
+  + invert H3; simp; eauto.
+  + eapply H0 in H5.
+    eapply IHhoare_triple in H6; simp.
+    eapply trc_imply in H6; eauto.
+Qed.
+
+Lemma reverse_HtReturn: forall (A : Set) (P : hprop) (R : hrel) (v : A) G Q,
+  hoare_triple P R (Return v) G Q
+  -> stableP P R /\ (forall h, P h -> Q v h).
+Proof.
+  induct 1; simp; eauto.
+Qed.
+
+Proof.
+Lemma preservation :
+  forall (t : Set) P (c : cmd t) R G Q,
+    hoare_triple P R c G Q ->
+    forall h,
+      P h ->
+      forall h' c',
+        step (h, c) (h', c') ->
+        hoare_triple (fun h'' => R^* h' h'') R c' G Q.
+Proof.
+  induct 1; simplify; simp.
+
+  + 
+    invert H3; simp.
+    - econstructor; eauto.
+    - apply reverse_HtReturn in H.
+      propositional.
+      econstructor; eauto.
+      simplify.
+      assert (P1 h).
+      eapply stableP_star; eauto.
+      eauto.
+ +
+      invert H5; simp.
+      - econstructor; eauto; simp; eauto; simplify.
+        ++ 
+           eapply trc_imply; eauto.
+        ++ 
+           assert (Hx:=H4).
+           apply H2 in H4.
+           assert (H':=H).
+           eapply always_stableP in H0.
+           unfold stableP in H0.
+           specialize (H0 h h').
+           apply guarantee with (t:=_) (c:=c1)(R:=(fun h h' : heap => R h h' \/ G2 h h'))(G:=G1) (h:=h)(h':=h')(c':=c1') in H; eauto.
+           assert(H'':= Hx).
+           apply H3 in Hx.
+           propositional.
+           assert (G1 h h') by admit.
+           propositional.
+           apply H3.
+           eapply stableP_star; eauto.
+           admit.
+
+      - econstructor; eauto; simp; eauto; simplify.
+        ++ apply H2.
+           admit.
+        ++
+           eapply trc_imply; eauto.
+
+ + invert H1.
+ + admit.
+ + admit.
+ + eapply HtConsequence; eauto; simp; eapply trc_imply; eauto.
+Admitted.
+
+Lemma progress :
+  forall (t : Set) P (c : cmd t) R G Q,
+    hoare_triple P R c G Q ->
+    forall h, P h ->
+         notAboutToFail c.
+Proof.
+  induct 1; simp; eauto; econstructor; eauto.
+Qed.
+
 
 Theorem hoare_triple_sound : forall (t : Set) P (c : cmd t) Q,
   hoare_triple P (fun _ _ => False) c (fun _ _ => True) Q ->
   forall h, P h ->
   invariantFor (trsys_of h c) (fun st => notAboutToFail (snd st)).
 Proof.
-  (* Stuck? Hints are available on the class website. *)
-Admitted.
+  simplify.
+  apply invariant_weaken with (invariant1 := fun prog => exists (P': hprop) (R': hrel), hoare_triple P' R' (snd prog) (fun _ _ : heap => True) Q /\ P' (fst prog)); eauto.
+  +
+    eapply invariant_induction; eauto.
+    ++ simplify; propositional; cases s; simplify; assert(h=f)by equality; subst; eauto.
+      assert (c=c0) by equality; subst; eauto.
+    ++ simplify.
+      cases s; cases s'; simp.
+      eexists. eexists.
+      propositional.
+      eapply preservation; simplify; eauto.
+      simplify.
+      eauto.
+  +
+    simplify; simp; eapply progress; eauto.
+Qed.
+

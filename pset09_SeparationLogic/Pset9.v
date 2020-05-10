@@ -333,7 +333,7 @@ Proof.
 Qed.
 
 Lemma mtree'_nonnull : forall {t p}, p <> 0
-  -> mtree' t p === exists l r lp x rp, [| t = Node l x r |] * p |--> [lp ; x; rp] * mtree' l lp * mtree' r rp.
+  -> mtree' t p === exists l r lp v rp, [| t = Node l v r |] * p |--> [lp ; v; rp] * mtree' l lp * mtree' r rp.
 Proof.
   heq; cases t; cancel.
   equality.
@@ -341,7 +341,7 @@ Proof.
 Qed.
 
 Theorem mtree_nonnull : forall {p}, p <> 0
-  -> mtree p === exists x lp rp, p |--> [lp; x; rp] * mtree lp * mtree rp.
+  -> mtree p === exists v lp rp, p |--> [lp; v; rp] * mtree lp * mtree rp.
 Proof.
   unfold mtree; simplify.
   setoid_rewrite (mtree'_nonnull H).
