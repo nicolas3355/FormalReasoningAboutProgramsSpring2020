@@ -26,7 +26,7 @@ Require Import Frap.MessagesAndRefinement.
 
 (* Delete this line if you don't like bullet points and errors like
    "Expected a single focused goal but 2 goals are focused." *)
-Set Default Goal Selector "!".
+(*Set Default Goal Selector "!".*)
 Arguments Nat.modulo: simpl never.
 
 (* In this pset, we will define a small key-value store server.
@@ -208,10 +208,151 @@ Where do they come from, and what does each of them ask you to prove?
    Hint: You should follow the same approach as add2_once_refines_addN and define a relation
    similar to R_add2, with the following signature, where we use "fs", "es", and "os" as
    abbreviations for full_store, even_store, and odd_store: *)
-Inductive R (fs es os : fmap nat nat) (input output : channel) : proc -> proc -> Prop :=
-(* FILL IN HERE *)
-.
+(* We use two intermediate channels forward_even and forward_odd, and add a
+   request_dispatcher to forward requests to these channels: *)
+(*Definition request_dispatcher (input forward_even forward_odd : channel) : proc :=
+  ??input(req: request);
+  if get_key req mod 2 ==n 0 then
+    !!forward_even(req); Done
+  else
+    !!forward_odd(req); Done.
 
+(* Our balanced request handler creates two intermediate channels and then combines the
+   request dispatcher with two request handlers, one for even keys and one for odd keys: *)
+Definition balanced_handler (even_store odd_store : fmap nat nat) (input output : channel) : proc :=
+  New[input; output](forward_even);
+  New[input; output; forward_even](forward_odd);
+  request_dispatcher input forward_even forward_odd
+  || request_handler even_store forward_even output
+  || request_handler odd_store forward_odd output.
+*)
+Inductive R (fs es os : fmap nat nat) (input output : channel) : proc -> proc -> Prop :=
+  | Stage0:
+    NoDup [input; output] ->
+    R fs es os input output
+      (balanced_handler es os input output)
+      (request_handler fs input output)
+
+  | Stage1: forall forward_even,
+    NoDup [input; output; forward_even] ->
+    R fs es os input output
+      (Block forward_even;
+       New [input; output; forward_even] (forward_odd);
+       request_dispatcher input forward_even forward_odd
+       || request_handler es forward_even output
+       || request_handler os forward_odd output)
+      (request_handler fs input output)
+
+  | Stage2: forall forward_even forward_odd,
+    NoDup [input; output; forward_even; forward_odd] ->
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       request_dispatcher input forward_even forward_odd
+       || request_handler es forward_even output
+       || request_handler os forward_odd output)
+      (request_handler fs input output)
+
+  | Stage3: forall forward_even forward_odd key client_id,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 = 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       !! forward_even (GET client_id key); Done
+       || request_handler es forward_even output
+       || request_handler os forward_odd output)
+
+      (match fs $? key with
+        | Some v => !!output(FOUND client_id key v); Done
+        | None => !!output(NOT_FOUND client_id key); Done
+        end
+      )
+
+  | Stage4: forall forward_even forward_odd key client_id,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 <> 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       !!forward_odd(GET client_id key); Done
+       || request_handler es forward_even output
+       || request_handler os forward_odd output)
+
+      (match fs $? key with
+        | Some v => !!output(FOUND client_id key v); Done
+        | None => !!output(NOT_FOUND client_id key); Done
+        end
+      )
+
+
+  | Stage5: forall forward_even forward_odd key client_id,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 = 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       Done ||
+       match es $? key with
+       | Some v => !!output(FOUND client_id key v); Done
+       | None => !!output(NOT_FOUND client_id key); Done
+       end 
+      || request_handler os forward_odd output)
+    ( match fs $? key with
+        | Some v => !!output(FOUND client_id key v); Done
+        | None => !!output(NOT_FOUND client_id key); Done 
+     end
+    )
+
+
+  | Stage6: forall forward_even forward_odd key client_id,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 <> 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       Done ||
+       request_handler es forward_even output || 
+       match os $? key with
+         | Some v => !!output(FOUND client_id key v); Done
+         | None => !!output(NOT_FOUND client_id key); Done
+       end) 
+    ( match fs $? key with
+        | Some v => !!output(FOUND client_id key v); Done
+        | None => !!output(NOT_FOUND client_id key); Done 
+      end
+    )
+
+
+  | Stage7: forall forward_even forward_odd key,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 = 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       Done ||
+       Done ||
+       request_handler os forward_odd output)
+      (Done)
+
+  | Stage8: forall forward_even forward_odd key,
+    NoDup [input; output; forward_even; forward_odd] ->
+    (key mod 2 <> 0) ->
+
+    R fs es os input output
+      (Block forward_even;
+       Block forward_odd;
+       Done ||
+       request_handler es forward_even output ||
+       Done) 
+      (Done)
+.
+Hint Constructors R : core.
 (* One more hint: You can use the "lists" tactic to prove any "NoDup" goals/contradictions. *)
 
 (* And another hint: Here's some tactic which you might find handy in your proofs.
@@ -244,11 +385,35 @@ Ltac t_step :=
   | _ => solve [equality]
   end.
 
+Ltac match_cases := match goal with
+| _  :  context[ match ?a with _ => _  end ] |- _ => cases a
+|  [ |- context[ match ?a with _ => _  end ] ]    => cases a
+end.
+
+Ltac get_key_availability := match goal with
+| [H: ?key mod 2 = 0,  H2: forall k, k mod 2 =  0 -> _ |- _ ] => specialize (H2 _ H)
+| [H: ?key mod 2 <> 0, H2: forall k, k mod 2 <> 0 -> _ |- _ ] => specialize (H2 _ H)
+| [H: Some ?a = Some ?b |- _ ] => invert H
+end.
+
 Ltac t := repeat t_step.
 
 Theorem balanced_handler_correct : correctness.
 Proof.
-Admitted.
+  unfold correctness.
+  simplify.
+  eapply refines_couldGenerate;eauto.
+  assert(NoDup [input; output]) by lists.
+  exists (R full_store even_store odd_store input output).
+  first_order. 
+  + eexists. 
+    split.
+    - eapply TrcRefl.
+    - repeat (lists || econstructor || t_step || match_cases).
+  + t; repeat(lists || get_key_availability || econstructor || t_step || match_cases || eauto || propositional).    
+  + eauto.
+Qed.
+  
 
 (* OPTIONAL exercise (ungraded, very short):
    Another important property of refinment is that any subpart of a larger
@@ -265,4 +430,15 @@ Lemma multicorrectness : forall full_store even_store odd_store input output,
     couldGenerate (Dup (balanced_handler even_store odd_store input output)) trace ->
     couldGenerate (Dup (request_handler full_store input output)) trace.
 Proof.
-Admitted.
+  simplify.
+  eapply refines_couldGenerate; eauto.
+  eapply refines_Dup.
+  exists (R full_store even_store odd_store input output).
+  first_order. 
+  + eexists. 
+    split.
+    - eapply TrcRefl.
+    - repeat (lists || econstructor || t_step || match_cases).
+  + t; repeat(lists || get_key_availability || econstructor || t_step || match_cases || eauto || propositional).    
+  + eauto.
+Qed.
